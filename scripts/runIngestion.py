@@ -3,25 +3,29 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+from pathlib import Path
 
-from study_spot_recommender.Config import AppConfig
-from study_spot_recommender.Pipeline import IngestionPipeline
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from studySpotRecommender.appConfig import AppConfig
+from studySpotRecommender.ingestionPipeline import IngestionPipeline
 
 
-def parse_args() -> argparse.Namespace:
+def parseArgs() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run UCI study spot ingestion pipeline")
-    parser.add_argument("--radius-miles", type=float, default=5.0)
-    parser.add_argument("--sqlite-path", type=str, default="data/study_spots.db")
-    parser.add_argument("--max-results", type=int, default=50)
+    parser.add_argument("--radiusMiles", type=float, default=5.0)
+    parser.add_argument("--sqlitePath", type=str, default="data/studySpots.db")
+    parser.add_argument("--maxResults", type=int, default=50)
     return parser.parse_args()
 
 
 def main() -> None:
-    args = parse_args()
+    args = parseArgs()
     config = AppConfig(
-        radius_miles=args.radius_miles,
-        sqlite_path=args.sqlite_path,
-        max_results_per_source=args.max_results,
+        radiusMiles=args.radiusMiles,
+        sqlitePath=args.sqlitePath,
+        maxResultsPerSource=args.maxResults,
     )
     pipeline = IngestionPipeline(config)
     result = pipeline.ingest()

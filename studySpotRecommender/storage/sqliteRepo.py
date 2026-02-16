@@ -5,7 +5,7 @@ import os
 import sqlite3
 from contextlib import closing
 
-from study_spot_recommender.Models import CanonicalStudySpot
+from studySpotRecommender.dataModels import CanonicalStudySpot
 
 
 class SQLiteRepository:
@@ -17,56 +17,56 @@ class SQLiteRepository:
         with closing(sqlite3.connect(self.path)) as conn:
             conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS canonical_spots (
-                    canonical_id TEXT PRIMARY KEY,
+                CREATE TABLE IF NOT EXISTS canonicalSpots (
+                    canonicalId TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     latitude REAL NOT NULL,
                     longitude REAL NOT NULL,
                     address TEXT,
-                    on_campus INTEGER NOT NULL,
-                    source_ids TEXT NOT NULL,
+                    onCampus INTEGER NOT NULL,
+                    sourceIds TEXT NOT NULL,
                     features TEXT NOT NULL,
-                    feature_provenance TEXT NOT NULL,
+                    featureProvenance TEXT NOT NULL,
                     confidence TEXT NOT NULL,
-                    last_refreshed_at TEXT NOT NULL
+                    lastRefreshedAt TEXT NOT NULL
                 )
                 """
             )
             conn.commit()
 
-    def upsert_many(self, spots: list[CanonicalStudySpot]) -> None:
+    def upsertMany(self, spots: list[CanonicalStudySpot]) -> None:
         with closing(sqlite3.connect(self.path)) as conn:
             conn.executemany(
                 """
-                INSERT INTO canonical_spots (
-                    canonical_id, name, latitude, longitude, address, on_campus,
-                    source_ids, features, feature_provenance, confidence, last_refreshed_at
+                INSERT INTO canonicalSpots (
+                    canonicalId, name, latitude, longitude, address, onCampus,
+                    sourceIds, features, featureProvenance, confidence, lastRefreshedAt
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(canonical_id) DO UPDATE SET
+                ON CONFLICT(canonicalId) DO UPDATE SET
                     name=excluded.name,
                     latitude=excluded.latitude,
                     longitude=excluded.longitude,
                     address=excluded.address,
-                    on_campus=excluded.on_campus,
-                    source_ids=excluded.source_ids,
+                    onCampus=excluded.onCampus,
+                    sourceIds=excluded.sourceIds,
                     features=excluded.features,
-                    feature_provenance=excluded.feature_provenance,
+                    featureProvenance=excluded.featureProvenance,
                     confidence=excluded.confidence,
-                    last_refreshed_at=excluded.last_refreshed_at
+                    lastRefreshedAt=excluded.lastRefreshedAt
                 """,
                 [
                     (
-                        s.canonical_id,
+                        s.canonicalId,
                         s.name,
                         s.latitude,
                         s.longitude,
                         s.address,
-                        1 if s.on_campus else 0,
-                        json.dumps(s.source_ids),
+                        1 if s.onCampus else 0,
+                        json.dumps(s.sourceIds),
                         json.dumps(s.features),
-                        json.dumps(s.feature_provenance),
+                        json.dumps(s.featureProvenance),
                         json.dumps(s.confidence),
-                        s.last_refreshed_at,
+                        s.lastRefreshedAt,
                     )
                     for s in spots
                 ],

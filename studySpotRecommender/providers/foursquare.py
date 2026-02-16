@@ -5,8 +5,8 @@ from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from study_spot_recommender.Models import SourceRecord
-from .Base import BaseProvider
+from studySpotRecommender.dataModels import SourceRecord
+from .providerBase import BaseProvider
 
 
 class FoursquareProvider(BaseProvider):
@@ -14,27 +14,27 @@ class FoursquareProvider(BaseProvider):
     endpoint = "https://places-api.foursquare.com/places/search"
 
     def fetch(self) -> list[SourceRecord]:
-        if not self.config.foursquare_api_key:
+        if not self.config.foursquareApiKey:
             return []
 
         query = urlencode(
             {
-                "ll": f"{self.config.uci_lat},{self.config.uci_lon}",
-                "radius": self.config.radius_meters,
+                "ll": f"{self.config.uciLat},{self.config.uciLon}",
+                "radius": self.config.radiusMeters,
                 "query": "cafe library study",
-                "limit": self.config.max_results_per_source,
+                "limit": self.config.maxResultsPerSource,
             }
         )
         req = Request(
             f"{self.endpoint}?{query}",
             headers={
-                "Authorization": f"Bearer {self.config.foursquare_api_key}",
+                "Authorization": f"Bearer {self.config.foursquareApiKey}",
                 "Accept": "application/json",
             },
         )
 
         try:
-            with urlopen(req, timeout=self.config.request_timeout_s) as response:
+            with urlopen(req, timeout=self.config.requestTimeoutS) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except URLError:
             return []
@@ -46,12 +46,12 @@ class FoursquareProvider(BaseProvider):
             records.append(
                 SourceRecord(
                     provider=self.name,
-                    source_id=place.get("fsq_place_id", ""),
+                    sourceId=place.get("fsq_place_id", ""),
                     name=place.get("name", "Unknown"),
                     latitude=geocodes.get("latitude", 0.0),
                     longitude=geocodes.get("longitude", 0.0),
                     address=location.get("formatted_address"),
-                    transport_notes=f"Distance from query center: {place.get('distance', 'unknown')}m",
+                    transportNotes=f"Distance from query center: {place.get('distance', 'unknown')}m",
                     raw=place,
                 )
             )

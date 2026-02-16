@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from study_spot_recommender.Config import AppConfig
-from study_spot_recommender.Models import SourceRecord
+from studySpotRecommender.appConfig import AppConfig
+from studySpotRecommender.dataModels import SourceRecord
 
 
 class BaseProvider(ABC):

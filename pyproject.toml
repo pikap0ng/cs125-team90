@@ -11,8 +11,9 @@ dependencies = []
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["study_spot_recommender*"]
+include = ["studySpotRecommender*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test*.py"]
+pythonpath = ["."]

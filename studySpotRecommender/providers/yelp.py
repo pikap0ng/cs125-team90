@@ -5,8 +5,8 @@ from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from study_spot_recommender.Models import SourceRecord
-from .Base import BaseProvider
+from studySpotRecommender.dataModels import SourceRecord
+from .providerBase import BaseProvider
 
 
 class YelpProvider(BaseProvider):
@@ -14,25 +14,25 @@ class YelpProvider(BaseProvider):
     endpoint = "https://api.yelp.com/v3/businesses/search"
 
     def fetch(self) -> list[SourceRecord]:
-        if not self.config.yelp_api_key:
+        if not self.config.yelpApiKey:
             return []
 
         query = urlencode(
             {
-                "latitude": self.config.uci_lat,
-                "longitude": self.config.uci_lon,
-                "radius": min(self.config.radius_meters, 40000),
-                "limit": min(self.config.max_results_per_source, 50),
+                "latitude": self.config.uciLat,
+                "longitude": self.config.uciLon,
+                "radius": min(self.config.radiusMeters, 40000),
+                "limit": min(self.config.maxResultsPerSource, 50),
                 "categories": "coffee,coffeeroasteries,libraries",
             }
         )
         req = Request(
             f"{self.endpoint}?{query}",
-            headers={"Authorization": f"Bearer {self.config.yelp_api_key}"},
+            headers={"Authorization": f"Bearer {self.config.yelpApiKey}"},
         )
 
         try:
-            with urlopen(req, timeout=self.config.request_timeout_s) as response:
+            with urlopen(req, timeout=self.config.requestTimeoutS) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except URLError:
             return []
@@ -44,12 +44,12 @@ class YelpProvider(BaseProvider):
             records.append(
                 SourceRecord(
                     provider=self.name,
-                    source_id=business.get("id", ""),
+                    sourceId=business.get("id", ""),
                     name=business.get("name", "Unknown"),
                     latitude=coordinates.get("latitude", 0.0),
                     longitude=coordinates.get("longitude", 0.0),
                     address=", ".join(location.get("display_address", [])) if location else None,
-                    transport_notes="Yelp attribute hydration can enrich noise/wifi/parking",
+                    transportNotes="Yelp attribute hydration can enrich noise, wifi, and parking",
                     raw=business,
                 )
             )

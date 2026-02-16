@@ -9,68 +9,68 @@ from uuid import uuid4
 @dataclass
 class SourceRecord:
     provider: str
-    source_id: str
+    sourceId: str
     name: str
     latitude: float
     longitude: float
     address: str | None = None
-    hours_text: str | None = None
-    open_now: bool | None = None
+    hoursText: str | None = None
+    openNow: bool | None = None
     parking: str | None = None
     wifi: str | None = None
     charging: str | None = None
-    transport_notes: str | None = None
-    on_campus: bool = False
+    transportNotes: str | None = None
+    onCampus: bool = False
     raw: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class CanonicalStudySpot:
-    canonical_id: str
+    canonicalId: str
     name: str
     latitude: float
     longitude: float
     address: str | None
-    on_campus: bool
-    source_ids: dict[str, str]
+    onCampus: bool
+    sourceIds: dict[str, str]
     features: dict[str, Any]
-    feature_provenance: dict[str, Any]
+    featureProvenance: dict[str, Any]
     confidence: dict[str, float]
-    last_refreshed_at: str
+    lastRefreshedAt: str
 
     @classmethod
-    def from_source(cls, record: SourceRecord) -> "CanonicalStudySpot":
+    def fromSource(cls, record: SourceRecord) -> "CanonicalStudySpot":
         return cls(
-            canonical_id=str(uuid4()),
+            canonicalId=str(uuid4()),
             name=record.name,
             latitude=record.latitude,
             longitude=record.longitude,
             address=record.address,
-            on_campus=record.on_campus,
-            source_ids={record.provider: record.source_id},
+            onCampus=record.onCampus,
+            sourceIds={record.provider: record.sourceId},
             features={
-                "hours_text": record.hours_text,
-                "open_now": record.open_now,
+                "hoursText": record.hoursText,
+                "openNow": record.openNow,
                 "parking": record.parking,
                 "wifi": record.wifi,
                 "charging": record.charging,
-                "transport_notes": record.transport_notes,
+                "transportNotes": record.transportNotes,
             },
-            feature_provenance={
+            featureProvenance={
                 key: {
                     "source": record.provider,
-                    "method": "api_or_scrape",
+                    "method": "apiOrScrape",
                     "timestamp": datetime.now(tz=timezone.utc).isoformat(),
                 }
-                for key in ["hours_text", "open_now", "parking", "wifi", "charging", "transport_notes"]
+                for key in ["hoursText", "openNow", "parking", "wifi", "charging", "transportNotes"]
             },
             confidence={
-                "hours_text": 0.8 if record.hours_text else 0.0,
-                "open_now": 0.9 if record.open_now is not None else 0.0,
+                "hoursText": 0.8 if record.hoursText else 0.0,
+                "openNow": 0.9 if record.openNow is not None else 0.0,
                 "parking": 0.7 if record.parking else 0.0,
                 "wifi": 0.7 if record.wifi else 0.0,
                 "charging": 0.5 if record.charging else 0.0,
-                "transport_notes": 0.6 if record.transport_notes else 0.0,
+                "transportNotes": 0.6 if record.transportNotes else 0.0,
             },
-            last_refreshed_at=datetime.now(tz=timezone.utc).isoformat(),
+            lastRefreshedAt=datetime.now(tz=timezone.utc).isoformat(),
         )
