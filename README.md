@@ -15,9 +15,6 @@ python scripts/runIngestion.py \
   --verbose
 ```
 
-**Talk track:**
-“Each provider fetches independently, then everything is normalized and merged into canonical rows.”
-
 **What this shows:**
 - provider modularity and fetch diagnostics
 - merged output summary (`totalSourceRecords`, `totalCanonicalSpots`)
@@ -32,8 +29,6 @@ python scripts/runIngestion.py \
 sqlite3 data/tmp_study_live.db ".tables"
 ```
 
-**What this shows:** Expected persistence layer is present.
-
 ### 2.2 Compare source vs canonical counts
 
 ```bash
@@ -42,8 +37,6 @@ sqlite3 -header -column data/tmp_study_live.db \
    (SELECT COUNT(*) FROM sourceRecords) AS sourceRows,
    (SELECT COUNT(*) FROM canonicalSpots) AS canonicalRows;"
 ```
-
-**What this shows:** canonical rows are the “items being ranked” and are often fewer than raw source rows.
 
 ### 2.3 Confirm provider contribution
 
@@ -54,8 +47,6 @@ sqlite3 -header -column data/tmp_study_live.db \
  GROUP BY provider
  ORDER BY n DESC;"
 ```
-
-**What this shows:** multi-source ingestion is real, not simulated.
 
 ---
 
@@ -70,8 +61,6 @@ sqlite3 -header -column data/tmp_study_live.db \
  LIMIT 10;"
 ```
 
-**What this shows:** normalized spot representation across providers.
-
 ### 3.2 Features available for contextual ranking
 
 ```bash
@@ -81,8 +70,6 @@ sqlite3 -header -column data/tmp_study_live.db \
  LIMIT 5;"
 ```
 
-**What this shows:** ranking signals are materialized and queryable.
-
 ### 3.3 Provenance + confidence for trust/explainability
 
 ```bash
@@ -91,8 +78,6 @@ sqlite3 data/tmp_study_live.db ".mode line" \
  FROM canonicalSpots
  LIMIT 2;"
 ```
-
-**What this shows:** every result can be explained by source and confidence metadata.
 
 ---
 
@@ -291,7 +276,5 @@ sqlite3 -header -column data/tmp_study_live.db \
 **What this shows:** each canonical row has a stable key and aggregated source identity metadata.
 
 ---
-
-## 6 30-second closing summary for demo video
 
 > “We ingest from UCI, OSM, and Google into one canonical representation. We can filter and rank by context such as on-campus status, parking, wifi, and transport notes. We can also pivot intent (cafés vs libraries) and rerank based on user profile (driver vs transit). Every result is explainable through source IDs, feature provenance, and confidence metadata.”
