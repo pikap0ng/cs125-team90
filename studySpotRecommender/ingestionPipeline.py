@@ -25,19 +25,35 @@ class IngestionResult:
 class IngestionPipeline:
     def __init__(self, config: AppConfig):
         self.config = config
-        self.providers = [
+        allProviders = [
             UCIProvider(config),
             GooglePlacesProvider(config),
             YelpProvider(config),
             FoursquareProvider(config),
             OSMProvider(config),
         ]
+        enabled = {name.lower() for name in config.enabledProviders}
+        self.providers = [p for p in allProviders if not enabled or p.name.lower() in enabled]
         self.repo = SQLiteRepository(config.sqlitePath)
 
     def collect(self) -> list[SourceRecord]:
         allRecords: list[SourceRecord] = []
         for provider in self.providers:
-            records = provider.fetch()
+            if self.config.verbose:
+                print(f"[provider] {provider.name}: starting fetch")
+            try:
+                records = provider.fetch()
+            except Exception as err:
+                if self.config.verbose:
+                    print(f"[provider] {provider.name}: ERROR {err}")
+                records = []
+            if self.config.verbose:
+                print(f"[provider] {provider.name}: fetched {len(records)} records")
+                for record in records[: self.config.printRecordsPerProvider]:
+                    print(
+                        f"[record] {provider.name} | {record.name} | "
+                        f"{record.latitude:.5f},{record.longitude:.5f} | {record.address or 'n/a'}"
+                    )
             allRecords.extend(records)
         return allRecords
 

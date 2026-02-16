@@ -15,6 +15,9 @@ class AppConfig:
     requestTimeoutS: int = 15
     maxResultsPerSource: int = 50
     userAgent: str = "uci-study-spot-pipeline/0.1"
+    enabledProviders: tuple[str, ...] = ()
+    verbose: bool = False
+    printRecordsPerProvider: int = 0
 
     googleApiKey: str | None = field(default_factory=lambda: os.getenv("GOOGLE_API_KEY"))
     yelpApiKey: str | None = field(default_factory=lambda: os.getenv("YELP_API_KEY"))

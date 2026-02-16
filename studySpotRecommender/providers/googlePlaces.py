@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from studySpotRecommender.dataModels import SourceRecord
@@ -14,6 +14,8 @@ class GooglePlacesProvider(BaseProvider):
 
     def fetch(self) -> list[SourceRecord]:
         if not self.config.googleApiKey:
+            if self.config.verbose:
+                print("[provider] google: missing GOOGLE_API_KEY")
             return []
 
         payload = {
@@ -40,7 +42,18 @@ class GooglePlacesProvider(BaseProvider):
         try:
             with urlopen(req, timeout=self.config.requestTimeoutS) as response:
                 payload = json.loads(response.read().decode("utf-8"))
-        except URLError:
+        except HTTPError as err:
+            if self.config.verbose:
+                errorBody = err.read().decode("utf-8", errors="ignore")
+                print(f"[provider] google: HTTP {err.code} {err.reason} {errorBody}")
+            return []
+        except URLError as err:
+            if self.config.verbose:
+                print(f"[provider] google: URLError {err.reason}")
+            return []
+        except json.JSONDecodeError as err:
+            if self.config.verbose:
+                print(f"[provider] google: invalid JSON response: {err}")
             return []
 
         records: list[SourceRecord] = []
