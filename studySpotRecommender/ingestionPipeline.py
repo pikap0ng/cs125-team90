@@ -44,6 +44,7 @@ class IngestionPipeline:
     def ingest(self) -> IngestionResult:
         self.repo.initialize()
         records = self.collect()
+        self.repo.insertSourceRecords(records)
         canonicalSpots: list[CanonicalStudySpot] = deduplicate(records)
         self.repo.upsertMany(canonicalSpots)
         return IngestionResult(

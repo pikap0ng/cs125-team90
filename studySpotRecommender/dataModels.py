@@ -2,8 +2,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import re
 from typing import Any
 from uuid import uuid4
+
+
+STOPWORDS = {"the", "a", "an", "cafe", "coffee", "shop"}
+
+
+def _normalizeNameTokens(name: str) -> str:
+    tokens = [token for token in re.findall(r"[a-z0-9]+", name.lower()) if token not in STOPWORDS]
+    return "-".join(tokens) or "unknown"
+
+
+def buildCanonicalKey(name: str, latitude: float, longitude: float, precision: int = 4) -> str:
+    roundedLat = round(latitude, precision)
+    roundedLon = round(longitude, precision)
+    return f"{_normalizeNameTokens(name)}:{roundedLat}:{roundedLon}"
 
 
 @dataclass
@@ -21,12 +36,14 @@ class SourceRecord:
     charging: str | None = None
     transportNotes: str | None = None
     onCampus: bool = False
+    fetchedAt: str = field(default_factory=lambda: datetime.now(tz=timezone.utc).isoformat())
     raw: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class CanonicalStudySpot:
     canonicalId: str
+    canonicalKey: str
     name: str
     latitude: float
     longitude: float
@@ -42,6 +59,7 @@ class CanonicalStudySpot:
     def fromSource(cls, record: SourceRecord) -> "CanonicalStudySpot":
         return cls(
             canonicalId=str(uuid4()),
+            canonicalKey=buildCanonicalKey(record.name, record.latitude, record.longitude),
             name=record.name,
             latitude=record.latitude,
             longitude=record.longitude,

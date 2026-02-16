@@ -11,6 +11,18 @@ def normalizeName(name: str) -> str:
     return re.sub(r"\W+", "", name.lower())
 
 
+def nameTokens(name: str) -> set[str]:
+    return {token for token in re.findall(r"[a-z0-9]+", name.lower()) if token}
+
+
+def nameSimilarity(nameA: str, nameB: str) -> float:
+    tokensA = nameTokens(nameA)
+    tokensB = nameTokens(nameB)
+    if not tokensA or not tokensB:
+        return 0.0
+    return len(tokensA & tokensB) / len(tokensA | tokensB)
+
+
 def haversineMeters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     earthRadiusM = 6371000
     phi1 = math.radians(lat1)
@@ -28,9 +40,10 @@ def deduplicate(records: Iterable[SourceRecord], distanceThresholdM: float = 50.
         matchedSpot = None
         normalizedRecordName = normalizeName(record.name)
         for candidate in canonicalSpots:
-            nameClose = normalizeName(candidate.name) == normalizedRecordName
+            exactName = normalizeName(candidate.name) == normalizedRecordName
+            fuzzyName = nameSimilarity(candidate.name, record.name) >= 0.5
             geoClose = haversineMeters(record.latitude, record.longitude, candidate.latitude, candidate.longitude) <= distanceThresholdM
-            if nameClose and geoClose:
+            if (exactName or fuzzyName) and geoClose:
                 matchedSpot = candidate
                 break
 
