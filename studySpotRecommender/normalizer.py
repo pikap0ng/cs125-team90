@@ -57,6 +57,9 @@ def deduplicate(records: Iterable[SourceRecord], distanceThresholdM: float = 50.
 
         if matchedSpot:
             matchedSpot.sourceIds[record.provider] = record.sourceId
+            if _isMissingFeatureValue(matchedSpot.address) and not _isMissingFeatureValue(record.address):
+                matchedSpot.address = record.address
+            matchedSpot.onCampus = matchedSpot.onCampus or record.onCampus
             for featureKey, value in {
                 "hoursText": record.hoursText,
                 "openNow": record.openNow,

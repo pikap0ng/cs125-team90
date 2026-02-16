@@ -25,8 +25,11 @@ class OSMProvider(BaseProvider):
         return f"""
 [out:json][timeout:60];
 (
-  node(around:{radius},{lat},{lon})["amenity"~"cafe|library"];
-  way(around:{radius},{lat},{lon})["amenity"~"cafe|library"];
+  node(around:{radius},{lat},{lon})["amenity"~"cafe|library|study_space|coworking_space"];
+  way(around:{radius},{lat},{lon})["amenity"~"cafe|library|study_space|coworking_space"];
+  relation(around:{radius},{lat},{lon})["amenity"~"cafe|library|study_space|coworking_space"];
+  node(around:{radius},{lat},{lon})["name"~"study|learning",i];
+  way(around:{radius},{lat},{lon})["name"~"study|learning",i];
 );
 out center tags;
 """.strip()
@@ -59,6 +62,10 @@ out center tags;
                     pass
             except URLError as error:
                 print("[osm] URLError", error, endpoint)
+            except TimeoutError as error:
+                print("[osm] TimeoutError", error, endpoint)
+            except OSError as error:
+                print("[osm] OSError", error, endpoint)
             except json.JSONDecodeError as error:
                 print("[osm] JSONDecodeError", error, endpoint)
                 print("[osm] body head:", body[:300] if "body" in locals() else "<no body>")

@@ -47,3 +47,13 @@ def testOverpassPayloadParsesNodeAndWay() -> None:
     assert records[0].sourceId == "node:1"
     assert records[1].name == "Library 2"
     assert records[1].wifi == "wlan"
+
+
+def testOverpassQueryExpandsStudyRelatedAmenities() -> None:
+    provider = OSMProvider(AppConfig())
+    query = provider._buildQuery()
+
+    assert 'study_space' in query
+    assert 'coworking_space' in query
+    assert 'relation(around:' in query
+    assert '"name"~"study|learning",i' in query

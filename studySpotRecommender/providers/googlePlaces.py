@@ -25,16 +25,16 @@ class GooglePlacesProvider(BaseProvider):
         "places.accessibilityOptions"
     )
 
-    def fetch(self) -> list[SourceRecord]:
-        if not self.config.googleApiKey:
-            if self.config.verbose:
-                print("[provider] google: missing GOOGLE_API_KEY")
-            return []
+    includedTypeGroups = (
+        ["library", "book_store", "cafe", "coffee_shop"],
+        ["restaurant", "bakery", "community_center", "university"],
+    )
 
-        maxResultCount = min(max(self.config.maxResultsPerSource, 1), 20)
+    def _searchNearby(self, includedTypes: list[str], maxResultCount: int) -> dict[str, object] | None:
         payload = {
-            "includedTypes": ["cafe", "library", "book_store"],
+            "includedTypes": includedTypes,
             "maxResultCount": maxResultCount,
+            "rankPreference": "POPULARITY",
             "locationRestriction": {
                 "circle": {
                     "center": {"latitude": self.config.uciLat, "longitude": self.config.uciLon},
@@ -55,43 +55,68 @@ class GooglePlacesProvider(BaseProvider):
 
         try:
             with urlopen(req, timeout=self.config.requestTimeoutS) as response:
-                payload = json.loads(response.read().decode("utf-8"))
+                return json.loads(response.read().decode("utf-8"))
         except HTTPError as err:
             if self.config.verbose:
                 errorBody = err.read().decode("utf-8", errors="ignore")
                 print(f"[provider] google: HTTP {err.code} {err.reason} {errorBody}")
-            return []
+            return None
         except URLError as err:
             if self.config.verbose:
                 print(f"[provider] google: URLError {err.reason}")
-            return []
+            return None
         except json.JSONDecodeError as err:
             if self.config.verbose:
                 print(f"[provider] google: invalid JSON response: {err}")
+            return None
+
+    def fetch(self) -> list[SourceRecord]:
+        if not self.config.googleApiKey:
+            if self.config.verbose:
+                print("[provider] google: missing GOOGLE_API_KEY")
             return []
 
         records: list[SourceRecord] = []
-        for place in payload.get("places", []):
-            parkingObj = place.get("parkingOptions", {})
-            parkingText = ", ".join([key for key, enabled in parkingObj.items() if enabled]) or None
-            currentHours = place.get("currentOpeningHours", {})
-            regularHours = place.get("regularOpeningHours", {})
-            weekdayDescriptions = currentHours.get("weekdayDescriptions") or regularHours.get("weekdayDescriptions") or [None]
-            records.append(
-                SourceRecord(
-                    provider=self.name,
-                    sourceId=place.get("id", ""),
-                    name=place.get("displayName", {}).get("text", "Unknown"),
-                    latitude=place.get("location", {}).get("latitude", 0.0),
-                    longitude=place.get("location", {}).get("longitude", 0.0),
-                    address=place.get("formattedAddress"),
-                    hoursText=weekdayDescriptions[0],
-                    openNow=currentHours.get("openNow"),
-                    parking=parkingText,
-                    wifi=None,
-                    charging="accessibility options available" if place.get("accessibilityOptions") else None,
-                    transportNotes="Supports route-time hydration via Distance Matrix",
-                    raw=place,
+        seenPlaceIds: set[str] = set()
+        remaining = max(self.config.maxResultsPerSource, 1)
+
+        for typeGroup in self.includedTypeGroups:
+            if remaining <= 0:
+                break
+            payload = self._searchNearby(typeGroup, min(remaining, 20))
+            if not payload:
+                continue
+            for place in payload.get("places", []):
+                placeId = place.get("id", "")
+                if not placeId or placeId in seenPlaceIds:
+                    continue
+                seenPlaceIds.add(placeId)
+
+                parkingObj = place.get("parkingOptions", {})
+                parkingText = ", ".join([key for key, enabled in parkingObj.items() if enabled]) or None
+                currentHours = place.get("currentOpeningHours", {})
+                regularHours = place.get("regularOpeningHours", {})
+                weekdayDescriptions = currentHours.get("weekdayDescriptions") or regularHours.get("weekdayDescriptions") or [None]
+
+                records.append(
+                    SourceRecord(
+                        provider=self.name,
+                        sourceId=placeId,
+                        name=place.get("displayName", {}).get("text", "Unknown"),
+                        latitude=place.get("location", {}).get("latitude", 0.0),
+                        longitude=place.get("location", {}).get("longitude", 0.0),
+                        address=place.get("formattedAddress"),
+                        hoursText=weekdayDescriptions[0],
+                        openNow=currentHours.get("openNow"),
+                        parking=parkingText,
+                        wifi=None,
+                        charging="accessibility options available" if place.get("accessibilityOptions") else None,
+                        transportNotes="Supports route-time hydration via Distance Matrix",
+                        raw=place,
+                    )
                 )
-            )
+                remaining -= 1
+                if remaining <= 0:
+                    break
+
         return records

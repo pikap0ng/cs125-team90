@@ -159,3 +159,32 @@ def testDeduplicateAllowsFalseToFillMissingBooleanFeature() -> None:
 
     assert len(canonical) == 1
     assert canonical[0].features["openNow"] is False
+
+
+def testDeduplicateFillsMissingAddressAndOnCampusFlag() -> None:
+    records = [
+        SourceRecord(
+            provider="google",
+            sourceId="g-1",
+            name="Student Center Study Lounge",
+            latitude=33.6405,
+            longitude=-117.8443,
+            address=None,
+            onCampus=False,
+        ),
+        SourceRecord(
+            provider="uci",
+            sourceId="u-1",
+            name="Student Center Study Lounge",
+            latitude=33.64051,
+            longitude=-117.84431,
+            address="University of California, Irvine",
+            onCampus=True,
+        ),
+    ]
+
+    canonical = deduplicate(records, distanceThresholdM=100)
+
+    assert len(canonical) == 1
+    assert canonical[0].address == "University of California, Irvine"
+    assert canonical[0].onCampus is True
