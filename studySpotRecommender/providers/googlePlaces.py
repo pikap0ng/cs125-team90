@@ -11,6 +11,19 @@ from .providerBase import BaseProvider
 class GooglePlacesProvider(BaseProvider):
     name = "google"
     endpoint = "https://places.googleapis.com/v1/places:searchNearby"
+    fieldMask = (
+        "places.id,"
+        "places.displayName,"
+        "places.formattedAddress,"
+        "places.location,"
+        "places.types,"
+        "places.primaryType,"
+        "places.currentOpeningHours,"
+        "places.regularOpeningHours,"
+        "places.parkingOptions,"
+        "places.outdoorSeating,"
+        "places.accessibilityOptions"
+    )
 
     def fetch(self) -> list[SourceRecord]:
         if not self.config.googleApiKey:
@@ -35,7 +48,7 @@ class GooglePlacesProvider(BaseProvider):
             headers={
                 "Content-Type": "application/json",
                 "X-Goog-Api-Key": self.config.googleApiKey,
-                "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.currentOpeningHours,places.parkingOptions,places.outdoorSeating,places.accessibilityOptions",
+                "X-Goog-FieldMask": self.fieldMask,
             },
         )
 
@@ -60,6 +73,9 @@ class GooglePlacesProvider(BaseProvider):
         for place in payload.get("places", []):
             parkingObj = place.get("parkingOptions", {})
             parkingText = ", ".join([key for key, enabled in parkingObj.items() if enabled]) or None
+            currentHours = place.get("currentOpeningHours", {})
+            regularHours = place.get("regularOpeningHours", {})
+            weekdayDescriptions = currentHours.get("weekdayDescriptions") or regularHours.get("weekdayDescriptions") or [None]
             records.append(
                 SourceRecord(
                     provider=self.name,
@@ -68,8 +84,8 @@ class GooglePlacesProvider(BaseProvider):
                     latitude=place.get("location", {}).get("latitude", 0.0),
                     longitude=place.get("location", {}).get("longitude", 0.0),
                     address=place.get("formattedAddress"),
-                    hoursText=(place.get("currentOpeningHours", {}).get("weekdayDescriptions") or [None])[0],
-                    openNow=place.get("currentOpeningHours", {}).get("openNow"),
+                    hoursText=weekdayDescriptions[0],
+                    openNow=currentHours.get("openNow"),
                     parking=parkingText,
                     wifi=None,
                     charging="accessibility options available" if place.get("accessibilityOptions") else None,

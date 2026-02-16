@@ -74,3 +74,88 @@ def testDeduplicateMergesFuzzyNameCloseBy() -> None:
     canonical = deduplicate(records, distanceThresholdM=100)
 
     assert len(canonical) == 1
+
+
+def testDeduplicatePrefersFirstProviderWhenValuesConflict() -> None:
+    records = [
+        SourceRecord(
+            provider="google",
+            sourceId="g-1",
+            name="Gateway Study Center",
+            latitude=33.6405,
+            longitude=-117.8443,
+            parking="garage",
+            wifi="wlan",
+        ),
+        SourceRecord(
+            provider="osm",
+            sourceId="o-1",
+            name="Gateway Study Center",
+            latitude=33.64051,
+            longitude=-117.84431,
+            parking="street",
+            wifi="no",
+        ),
+    ]
+
+    canonical = deduplicate(records, distanceThresholdM=100)
+
+    assert len(canonical) == 1
+    assert canonical[0].sourceIds == {"google": "g-1", "osm": "o-1"}
+    assert canonical[0].features["parking"] == "garage"
+    assert canonical[0].features["wifi"] == "wlan"
+
+
+def testDeduplicatePrecedenceChangesWhenProviderOrderChanges() -> None:
+    records = [
+        SourceRecord(
+            provider="osm",
+            sourceId="o-1",
+            name="Gateway Study Center",
+            latitude=33.64051,
+            longitude=-117.84431,
+            parking="street",
+            wifi="no",
+        ),
+        SourceRecord(
+            provider="google",
+            sourceId="g-1",
+            name="Gateway Study Center",
+            latitude=33.6405,
+            longitude=-117.8443,
+            parking="garage",
+            wifi="wlan",
+        ),
+    ]
+
+    canonical = deduplicate(records, distanceThresholdM=100)
+
+    assert len(canonical) == 1
+    assert canonical[0].features["parking"] == "street"
+    assert canonical[0].features["wifi"] == "no"
+
+
+def testDeduplicateAllowsFalseToFillMissingBooleanFeature() -> None:
+    records = [
+        SourceRecord(
+            provider="google",
+            sourceId="g-1",
+            name="Gateway Study Center",
+            latitude=33.6405,
+            longitude=-117.8443,
+            openNow=None,
+        ),
+        SourceRecord(
+            provider="osm",
+            sourceId="o-1",
+            name="Gateway Study Center",
+            latitude=33.64051,
+            longitude=-117.84431,
+            openNow=False,
+        ),
+    ]
+
+    canonical = deduplicate(records, distanceThresholdM=100)
+
+    assert len(canonical) == 1
+    assert canonical[0].features["openNow"] is False

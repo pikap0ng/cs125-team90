@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Iterable
+from typing import Any, Iterable
 
 from studySpotRecommender.dataModels import CanonicalStudySpot, SourceRecord
 
@@ -33,6 +33,14 @@ def haversineMeters(lat1: float, lon1: float, lat2: float, lon2: float) -> float
     return 2 * earthRadiusM * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+def _isMissingFeatureValue(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    return False
+
+
 def deduplicate(records: Iterable[SourceRecord], distanceThresholdM: float = 50.0) -> list[CanonicalStudySpot]:
     canonicalSpots: list[CanonicalStudySpot] = []
 
@@ -57,7 +65,9 @@ def deduplicate(records: Iterable[SourceRecord], distanceThresholdM: float = 50.
                 "charging": record.charging,
                 "transportNotes": record.transportNotes,
             }.items():
-                if value and not matchedSpot.features.get(featureKey):
+                if _isMissingFeatureValue(value):
+                    continue
+                if _isMissingFeatureValue(matchedSpot.features.get(featureKey)):
                     matchedSpot.features[featureKey] = value
         else:
             canonicalSpots.append(CanonicalStudySpot.fromSource(record))

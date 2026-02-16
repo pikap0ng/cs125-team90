@@ -59,4 +59,31 @@ def testGoogleProviderBuildsV1RequestAndParsesResponse() -> None:
     assert captured["method"] == "POST"
     assert captured["headers"]["X-goog-api-key"] == "test-key"
     assert "places.id" in captured["headers"]["X-goog-fieldmask"]
+    assert "places.currentOpeningHours" in captured["headers"]["X-goog-fieldmask"]
+    assert "places.regularOpeningHours" in captured["headers"]["X-goog-fieldmask"]
     assert "cafe" in captured["body"]["includedTypes"]
+
+
+def testGoogleProviderFallsBackToRegularOpeningHours() -> None:
+    provider = GooglePlacesProvider(AppConfig(googleApiKey="test-key", maxResultsPerSource=5))
+    payload = {
+        "places": [
+            {
+                "id": "abc123",
+                "displayName": {"text": "Science Library"},
+                "formattedAddress": "Irvine, CA",
+                "location": {"latitude": 33.64, "longitude": -117.84},
+                "regularOpeningHours": {"weekdayDescriptions": ["Tue: 9-6"]},
+            }
+        ]
+    }
+
+    with patch(
+        "studySpotRecommender.providers.googlePlaces.urlopen",
+        return_value=_FakeResponse(payload),
+    ):
+        records = provider.fetch()
+
+    assert len(records) == 1
+    assert records[0].hoursText == "Tue: 9-6"
+    assert records[0].openNow is None
