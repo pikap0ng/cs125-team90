@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -11,37 +11,59 @@ from .providerBase import BaseProvider
 
 class OSMProvider(BaseProvider):
     name = "osm"
-    endpoint = "https://overpass-api.de/api/interpreter"
+    endpoints = (
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.nchc.org.tw/api/interpreter",
+        "https://lz4.overpass-api.de/api/interpreter",
+    )
 
     def _buildQuery(self) -> str:
         radius = self.config.radiusMeters
         lat = self.config.uciLat
         lon = self.config.uciLon
         return f"""
-[out:json][timeout:25];
+[out:json][timeout:60];
 (
-  node(around:{radius},{lat},{lon})["amenity"~"cafe|library|restaurant|fast_food"];
-  way(around:{radius},{lat},{lon})["amenity"~"cafe|library|restaurant|fast_food"];
+  node(around:{radius},{lat},{lon})["amenity"~"cafe|library"];
+  way(around:{radius},{lat},{lon})["amenity"~"cafe|library"];
 );
 out center tags;
 """.strip()
 
     def fetch(self) -> list[SourceRecord]:
         payload = urlencode({"data": self._buildQuery()}).encode("utf-8")
-        req = Request(
-            self.endpoint,
-            method="POST",
-            data=payload,
-            headers={
-                "User-Agent": self.config.userAgent,
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-        )
+        responsePayload: dict[str, object] = {}
 
-        try:
-            with urlopen(req, timeout=self.config.requestTimeoutS) as response:
-                responsePayload = json.loads(response.read().decode("utf-8"))
-        except (URLError, json.JSONDecodeError):
+        for endpoint in self.endpoints:
+            req = Request(
+                endpoint,
+                method="POST",
+                data=payload,
+                headers={
+                    "User-Agent": self.config.userAgent,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+            )
+
+            try:
+                with urlopen(req, timeout=max(self.config.requestTimeoutS, 60)) as response:
+                    body = response.read().decode("utf-8")
+                    responsePayload = json.loads(body)
+                    break
+            except HTTPError as error:
+                print("[osm] HTTPError", error.code, error.reason, endpoint)
+                try:
+                    print("[osm] body head:", error.read().decode("utf-8")[:300])
+                except Exception:
+                    pass
+            except URLError as error:
+                print("[osm] URLError", error, endpoint)
+            except json.JSONDecodeError as error:
+                print("[osm] JSONDecodeError", error, endpoint)
+                print("[osm] body head:", body[:300] if "body" in locals() else "<no body>")
+
+        if not responsePayload:
             return []
 
         records: list[SourceRecord] = []
