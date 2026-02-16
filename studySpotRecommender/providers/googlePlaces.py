@@ -31,9 +31,10 @@ class GooglePlacesProvider(BaseProvider):
                 print("[provider] google: missing GOOGLE_API_KEY")
             return []
 
+        maxResultCount = min(max(self.config.maxResultsPerSource, 1), 20)
         payload = {
             "includedTypes": ["cafe", "library", "book_store"],
-            "maxResultCount": self.config.maxResultsPerSource,
+            "maxResultCount": maxResultCount,
             "locationRestriction": {
                 "circle": {
                     "center": {"latitude": self.config.uciLat, "longitude": self.config.uciLon},

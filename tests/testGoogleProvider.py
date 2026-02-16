@@ -64,6 +64,35 @@ def testGoogleProviderBuildsV1RequestAndParsesResponse() -> None:
     assert "cafe" in captured["body"]["includedTypes"]
 
 
+
+
+def testGoogleProviderClampsMaxResultCountToApiBounds() -> None:
+    provider = GooglePlacesProvider(AppConfig(googleApiKey="test-key", maxResultsPerSource=50))
+    captured: dict[str, object] = {}
+
+    def _fakeUrlopen(req, timeout=0):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _FakeResponse({"places": []})
+
+    with patch("studySpotRecommender.providers.googlePlaces.urlopen", side_effect=_fakeUrlopen):
+        provider.fetch()
+
+    assert captured["body"]["maxResultCount"] == 20
+
+
+def testGoogleProviderRaisesMaxResultCountToMinimumOne() -> None:
+    provider = GooglePlacesProvider(AppConfig(googleApiKey="test-key", maxResultsPerSource=0))
+    captured: dict[str, object] = {}
+
+    def _fakeUrlopen(req, timeout=0):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _FakeResponse({"places": []})
+
+    with patch("studySpotRecommender.providers.googlePlaces.urlopen", side_effect=_fakeUrlopen):
+        provider.fetch()
+
+    assert captured["body"]["maxResultCount"] == 1
+
 def testGoogleProviderFallsBackToRegularOpeningHours() -> None:
     provider = GooglePlacesProvider(AppConfig(googleApiKey="test-key", maxResultsPerSource=5))
     payload = {

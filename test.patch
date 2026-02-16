@@ -1,0 +1,276 @@
+diff --git a/README.md b/README.md
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..07450e8c7ad789797c523c9f54e6fdefbe9645b3 100644
+--- a/README.md
++++ b/README.md
+@@ -0,0 +1,29 @@
++## Testing user conditions across UCI + OSM + Google
++
++Use this helper to run ingestion with `uci,osm,google` and print scenario counts that map to common user preferences (cafe/library vibe, on-campus, wifi, parking, charging, open-now).
++
++Google Places requests are automatically clamped to the API-supported range for `maxResultCount` (1..20), so larger CLI `--maxResults` values will not cause Google request failures.
++
++```bash
++python scripts/testUserConditions.py --sqlitePath data/tmp_user_conditions.db --verbose
++```
++
++### Useful command variants
++
++```bash
++# Smaller radius if you only want campus-adjacent results
++python scripts/testUserConditions.py --radiusMiles 2 --maxResults 25
++
++# Full radius and larger sample (when API keys are configured)
++python scripts/testUserConditions.py --radiusMiles 5 --maxResults 75
++```
++
++### Direct pipeline runs by provider set
++
++```bash
++# Force exactly UCI + OSM + Google providers
++python scripts/runIngestion.py --providers uci,osm,google --sqlitePath data/tmp_uog.db --verbose
++
++# Compare to only campus/static and OSM
++python scripts/runIngestion.py --providers uci,osm --sqlitePath data/tmp_uo.db --verbose
++```
+diff --git a/scripts/testUserConditions.py b/scripts/testUserConditions.py
+new file mode 100755
+index 0000000000000000000000000000000000000000..c0477b972d81a5691c757d50f2871c6bbd5cb2f2
+--- /dev/null
++++ b/scripts/testUserConditions.py
+@@ -0,0 +1,93 @@
++#!/usr/bin/env python3
++from __future__ import annotations
++
++import argparse
++import json
++import sqlite3
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++from studySpotRecommender.appConfig import AppConfig
++from studySpotRecommender.ingestionPipeline import IngestionPipeline
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Run user-condition checks against UCI, OSM, and Google providers."
++    )
++    parser.add_argument("--sqlitePath", default="data/tmp_user_conditions.db")
++    parser.add_argument("--radiusMiles", type=float, default=5.0)
++    parser.add_argument("--maxResults", type=int, default=50)
++    parser.add_argument("--verbose", action="store_true")
++    return parser.parse_args()
++
++
++def _count(conn: sqlite3.Connection, query: str) -> int:
++    return int(conn.execute(query).fetchone()[0])
++
++
++def main() -> None:
++    args = parse_args()
++
++    config = AppConfig(
++        sqlitePath=args.sqlitePath,
++        radiusMiles=args.radiusMiles,
++        maxResultsPerSource=args.maxResults,
++        enabledProviders=("uci", "osm", "google"),
++        verbose=args.verbose,
++    )
++    pipeline = IngestionPipeline(config)
++    result = pipeline.ingest()
++
++    db_path = Path(args.sqlitePath)
++    conn = sqlite3.connect(db_path)
++
++    metrics = {
++        "providersRequested": ["uci", "osm", "google"],
++        "providersReturned": [
++            row[0]
++            for row in conn.execute(
++                "SELECT DISTINCT provider FROM sourceRecords ORDER BY provider"
++            )
++        ],
++        "sourceRecords": _count(conn, "SELECT COUNT(*) FROM sourceRecords"),
++        "canonicalSpots": _count(conn, "SELECT COUNT(*) FROM canonicalSpots"),
++        "cafeLikeNames": _count(
++            conn,
++            "SELECT COUNT(*) FROM canonicalSpots WHERE lower(name) LIKE '%cafe%' OR lower(name) LIKE '%coffee%'",
++        ),
++        "libraryLikeNames": _count(
++            conn,
++            "SELECT COUNT(*) FROM canonicalSpots WHERE lower(name) LIKE '%library%'",
++        ),
++        "onCampusSpots": _count(conn, "SELECT COUNT(*) FROM canonicalSpots WHERE onCampus = 1"),
++        "wifiKnown": _count(
++            conn,
++            "SELECT COUNT(*) FROM canonicalSpots WHERE json_extract(features, '$.wifi') IS NOT NULL AND trim(json_extract(features, '$.wifi')) <> ''",
++        ),
++        "parkingKnown": _count(
++            conn,
++            "SELECT COUNT(*) FROM canonicalSpots WHERE json_extract(features, '$.parking') IS NOT NULL AND trim(json_extract(features, '$.parking')) <> ''",
++        ),
++        "chargingKnown": _count(
++            conn,
++            "SELECT COUNT(*) FROM canonicalSpots WHERE json_extract(features, '$.charging') IS NOT NULL AND trim(json_extract(features, '$.charging')) <> ''",
++        ),
++        "openNowTrue": _count(
++            conn,
++            "SELECT COUNT(*) FROM canonicalSpots WHERE json_extract(features, '$.openNow') = 1",
++        ),
++    }
++
++    conn.close()
++
++    print("Ingestion result:")
++    print(json.dumps(result.__dict__, indent=2))
++    print("\nScenario metrics:")
++    print(json.dumps(metrics, indent=2))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/studySpotRecommender/providers/googlePlaces.py b/studySpotRecommender/providers/googlePlaces.py
+index 80781fa58290cd8476dfe2b56224e408be14ce7e..21d91a2cd169ba24207f179d79431d484a348760 100644
+--- a/studySpotRecommender/providers/googlePlaces.py
++++ b/studySpotRecommender/providers/googlePlaces.py
+@@ -9,53 +9,54 @@ from .providerBase import BaseProvider
+ 
+ 
+ class GooglePlacesProvider(BaseProvider):
+     name = "google"
+     endpoint = "https://places.googleapis.com/v1/places:searchNearby"
+     fieldMask = (
+         "places.id,"
+         "places.displayName,"
+         "places.formattedAddress,"
+         "places.location,"
+         "places.types,"
+         "places.primaryType,"
+         "places.currentOpeningHours,"
+         "places.regularOpeningHours,"
+         "places.parkingOptions,"
+         "places.outdoorSeating,"
+         "places.accessibilityOptions"
+     )
+ 
+     def fetch(self) -> list[SourceRecord]:
+         if not self.config.googleApiKey:
+             if self.config.verbose:
+                 print("[provider] google: missing GOOGLE_API_KEY")
+             return []
+ 
++        maxResultCount = min(max(self.config.maxResultsPerSource, 1), 20)
+         payload = {
+             "includedTypes": ["cafe", "library", "book_store"],
+-            "maxResultCount": self.config.maxResultsPerSource,
++            "maxResultCount": maxResultCount,
+             "locationRestriction": {
+                 "circle": {
+                     "center": {"latitude": self.config.uciLat, "longitude": self.config.uciLon},
+                     "radius": self.config.radiusMeters,
+                 }
+             },
+         }
+         req = Request(
+             self.endpoint,
+             method="POST",
+             data=json.dumps(payload).encode("utf-8"),
+             headers={
+                 "Content-Type": "application/json",
+                 "X-Goog-Api-Key": self.config.googleApiKey,
+                 "X-Goog-FieldMask": self.fieldMask,
+             },
+         )
+ 
+         try:
+             with urlopen(req, timeout=self.config.requestTimeoutS) as response:
+                 payload = json.loads(response.read().decode("utf-8"))
+         except HTTPError as err:
+             if self.config.verbose:
+                 errorBody = err.read().decode("utf-8", errors="ignore")
+                 print(f"[provider] google: HTTP {err.code} {err.reason} {errorBody}")
+diff --git a/tests/testGoogleProvider.py b/tests/testGoogleProvider.py
+index 992bd77f444ce8a874e03d02cd2c7a2b43908fd4..e35ebdc968506a00a1917d6d0216284b70318d3d 100644
+--- a/tests/testGoogleProvider.py
++++ b/tests/testGoogleProvider.py
+@@ -42,48 +42,77 @@ def testGoogleProviderBuildsV1RequestAndParsesResponse() -> None:
+ 
+     captured: dict[str, object] = {}
+ 
+     def _fakeUrlopen(req, timeout=0):
+         captured["url"] = req.full_url
+         captured["method"] = req.get_method()
+         captured["headers"] = dict(req.header_items())
+         captured["body"] = json.loads(req.data.decode("utf-8"))
+         captured["timeout"] = timeout
+         return _FakeResponse(payload)
+ 
+     with patch("studySpotRecommender.providers.googlePlaces.urlopen", side_effect=_fakeUrlopen):
+         records = provider.fetch()
+ 
+     assert len(records) == 1
+     assert records[0].name == "Science Library"
+     assert captured["url"] == "https://places.googleapis.com/v1/places:searchNearby"
+     assert captured["method"] == "POST"
+     assert captured["headers"]["X-goog-api-key"] == "test-key"
+     assert "places.id" in captured["headers"]["X-goog-fieldmask"]
+     assert "places.currentOpeningHours" in captured["headers"]["X-goog-fieldmask"]
+     assert "places.regularOpeningHours" in captured["headers"]["X-goog-fieldmask"]
+     assert "cafe" in captured["body"]["includedTypes"]
+ 
+ 
++
++
++def testGoogleProviderClampsMaxResultCountToApiBounds() -> None:
++    provider = GooglePlacesProvider(AppConfig(googleApiKey="test-key", maxResultsPerSource=50))
++    captured: dict[str, object] = {}
++
++    def _fakeUrlopen(req, timeout=0):
++        captured["body"] = json.loads(req.data.decode("utf-8"))
++        return _FakeResponse({"places": []})
++
++    with patch("studySpotRecommender.providers.googlePlaces.urlopen", side_effect=_fakeUrlopen):
++        provider.fetch()
++
++    assert captured["body"]["maxResultCount"] == 20
++
++
++def testGoogleProviderRaisesMaxResultCountToMinimumOne() -> None:
++    provider = GooglePlacesProvider(AppConfig(googleApiKey="test-key", maxResultsPerSource=0))
++    captured: dict[str, object] = {}
++
++    def _fakeUrlopen(req, timeout=0):
++        captured["body"] = json.loads(req.data.decode("utf-8"))
++        return _FakeResponse({"places": []})
++
++    with patch("studySpotRecommender.providers.googlePlaces.urlopen", side_effect=_fakeUrlopen):
++        provider.fetch()
++
++    assert captured["body"]["maxResultCount"] == 1
++
+ def testGoogleProviderFallsBackToRegularOpeningHours() -> None:
+     provider = GooglePlacesProvider(AppConfig(googleApiKey="test-key", maxResultsPerSource=5))
+     payload = {
+         "places": [
+             {
+                 "id": "abc123",
+                 "displayName": {"text": "Science Library"},
+                 "formattedAddress": "Irvine, CA",
+                 "location": {"latitude": 33.64, "longitude": -117.84},
+                 "regularOpeningHours": {"weekdayDescriptions": ["Tue: 9-6"]},
+             }
+         ]
+     }
+ 
+     with patch(
+         "studySpotRecommender.providers.googlePlaces.urlopen",
+         return_value=_FakeResponse(payload),
+     ):
+         records = provider.fetch()
+ 
+     assert len(records) == 1
+     assert records[0].hoursText == "Tue: 9-6"
+     assert records[0].openNow is None
+
