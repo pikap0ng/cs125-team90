@@ -292,3 +292,12 @@ GoogleService-Info.plist
 google-services.json
 # Plugins (already resolved through pubspec.yaml)
 .flutter-plugins
+
+// Source - https://stackoverflow.com/q/77108275
+// Posted by Unubold Tumenbayar
+// Retrieved 2026-03-12, License - CC BY-SA 4.0
+
+**/generated_plugin_registrant.cc
+**/generated_plugin_registrant.h
+**/generated_plugins.cmake
+**/GeneratedPluginRegistrant.swift
