@@ -37,6 +37,7 @@ class _SearchPageState extends State<SearchPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

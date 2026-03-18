@@ -60,7 +60,7 @@ class _HomePageState extends State<HomePage> {
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -81,6 +81,7 @@ class _HomePageState extends State<HomePage> {
                     }).toList(),
                   ),
                 ),
+                const SizedBox(height: 25,),
               ],
             ),
           ),

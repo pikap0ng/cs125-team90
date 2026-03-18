@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:study_spot_locator/constants.dart';
+import 'package:study_spot_locator/services/api_service.dart';
 
 class PreferencesPage extends StatefulWidget {
   const PreferencesPage({super.key});
@@ -8,16 +9,19 @@ class PreferencesPage extends StatefulWidget {
   State<PreferencesPage> createState() => _PreferencesPageState();
 }
 
-enum Preference { none, prefer, avoid }
 class _PreferencesPageState extends State<PreferencesPage> {
-  double _noiseLevel = 3;
-  double _distance = 10;
+  bool _isLoading = false;
+
+  double _noiseLevel = 1;
+  double _distance = 0;
   bool _useNoisePref = false;
   bool _useDistancePref = false;
 
-  Preference _libraryPreference = Preference.none;
-  Preference _cafePreference = Preference.none;
-  Preference _otherPreference = Preference.none;
+  final Map<String, Preference> _locationTypePrefs = {
+    "Library": Preference.none,
+    "Cafe": Preference.none,
+    "Other": Preference.none,
+  };
 
   final Map<String, Preference> _preferences = {
     "On Campus": Preference.none,
@@ -27,6 +31,35 @@ class _PreferencesPageState extends State<PreferencesPage> {
     "Freshman-Only": Preference.none,
   };
 
+  void _handleSave() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    bool success = await ApiService.saveUserPreferences(
+      username: "username",
+      noise: _useNoisePref ? _noiseLevel : -1.0,
+      distance: _useDistancePref ? _distance : -1.0,
+      amenities: _preferences,
+      locationType: _locationTypePrefs
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Preferences Saved!")),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Failed to save."), backgroundColor: primaryRed,),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,9 +93,9 @@ class _PreferencesPageState extends State<PreferencesPage> {
             const SizedBox(height: 20,),
 
             _buildContainerSection([
-              _buildSliderWithToggle(label: "Noise Preference", value: _noiseLevel, isEnabled: _useNoisePref, min: 1, max: 5, divisions: 4, onToggle: (v) => setState(() => _useNoisePref = v!), onChanged: (v) => setState(() => _noiseLevel = v)),
+              _buildSliderWithToggle(label: "Noise Tolerance", value: _noiseLevel, isEnabled: _useNoisePref, min: 1, max: 5, divisions: 4, onToggle: (v) => setState(() => _useNoisePref = v!), onChanged: (v) => setState(() => _noiseLevel = v)),
               const SizedBox(height: 5,),
-              _buildSliderWithToggle(label: "Distance From Campus", value: _distance, isEnabled: _useDistancePref, min: 0, max: 25, onToggle: (v) => setState(() => _useDistancePref = v!), onChanged: (v) => setState(() => _distance = v)),
+              _buildSliderWithToggle(label: "Distance From Campus", value: _distance, isEnabled: _useDistancePref, min: 0, max: 25, divisions: 25, onToggle: (v) => setState(() => _useDistancePref = v!), onChanged: (v) => setState(() => _distance = v)),
             ]),
             
             const SizedBox(height: 20),
@@ -70,13 +103,29 @@ class _PreferencesPageState extends State<PreferencesPage> {
               const Text("Location Type"),
               Row(
                 children: [
-                  _buildSmallCheckbox("Library", _libraryPreference, (v) => setState(() => _libraryPreference = v)),
-                  _buildSmallCheckbox("Cafe", _cafePreference, (v) => setState(() => _cafePreference = v)),
-                  _buildSmallCheckbox("Other", _otherPreference, (v) => setState(() => _otherPreference = v)),
+                  Wrap(
+                    children: _locationTypePrefs.keys.map((type) {
+                      return _buildSmallCheckbox(type, _locationTypePrefs[type]!, (v) => setState(() => _locationTypePrefs[type] = v));
+                    }).toList(),
+                  )
                 ],
               ),
             ]),
-          ],
+            const SizedBox(height: 15,),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    disabledBackgroundColor: darkPrimaryColor,
+                  ),
+                  onPressed: _isLoading ? null : _handleSave, 
+                  child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: primaryWhite, backgroundColor: Colors.transparent, strokeWidth: 2,),) : const Text("Save Changes"),
+                ),
+              ],
+            ),
+            const SizedBox(height: 50,),
+          ],          
         ),
       ),
     );
@@ -163,7 +212,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
             Text(label, style: primaryTextStyle,),
             Row(
               children: [
-                const Text("OFF", style: TextStyle(fontSize: 12),),
+                const Text("N/A", style: TextStyle(fontSize: 12),),
                 Checkbox(value: !isEnabled, onChanged: (v) => onToggle(!v!)),
               ],
             ),
@@ -177,6 +226,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
                 value: value,
                 min: min, max: max,
                 divisions: divisions,
+                label: value.round().toString(),
                 activeColor: isEnabled ? darkPrimaryColor : primaryLightGray,
                 onChanged: isEnabled ? onChanged : null,
               ),
@@ -224,5 +274,4 @@ class _PreferencesPageState extends State<PreferencesPage> {
       ),
     );
   }
-
 }

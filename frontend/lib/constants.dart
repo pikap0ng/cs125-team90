@@ -36,3 +36,14 @@ const TextStyle primaryErrorStyle = TextStyle(
   color: primaryRed,
   fontWeight: FontWeight.w500,
 );
+
+
+enum Preference { none, prefer, avoid }
+
+int prefToInt(Preference p) {
+  switch (p) {
+    case Preference.prefer: return 1;
+    case Preference.avoid: return -1;
+    case Preference.none: return 0;
+  }
+}
