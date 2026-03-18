@@ -60,31 +60,41 @@ class _SearchPageState extends State<SearchPage> {
 
             const Text("Suggested", style: primaryTitleStyle,),
             const Divider(color: primaryBlack, thickness: 1.5,),
-            const SizedBox(height: 20,),
+            const SizedBox(height: 15,),
 
-            // Make dynamic later
-            LocationCard(spot: spots[0]),
-            const SizedBox(height: 20),
-            LocationCard(spot: spots[1]),
+            Center(
+              child: Wrap(
+                spacing: 20,
+                runSpacing: 20,
+                alignment: WrapAlignment.center,
+                children: spots.map((spot) {
+                  return ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 400),
+                    child: LocationCard(spot: spot),
+                  );
+                }).toList(),
+              ),
+            )
           ],
         ),
       )
     );
   }
 
-  Widget _buildRecentSearchItem(String text) {
-    return Container(
-      height: 35,
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 15),
-      decoration: BoxDecoration(
-        color: primaryGray,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: const Align(
-        alignment: Alignment.centerRight,
-        child: Icon(Icons.north_west, size: 16, color: primaryBlack),
-      ),
-    );
-  }
+  // Widget _buildRecentSearchItem(String text) {
+  //   return Container(
+  //     height: 35,
+  //     width: double.infinity,
+  //     padding: const EdgeInsets.symmetric(horizontal: 15),
+  //     decoration: BoxDecoration(
+  //       color: primaryGray,
+  //       borderRadius: BorderRadius.circular(4),
+  //     ),
+  //     child: const Align(
+  //       alignment: Alignment.centerRight,
+  //       child: Icon(Icons.north_west, size: 16, color: primaryBlack),
+  //     ),
+  //   );
+  // }
+
 }

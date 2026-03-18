@@ -257,3 +257,7 @@ __marimo__/
 
 # debug information files
 *.dwo
+
+# SQLITE
+*.db
+*.sqlite3

@@ -18,6 +18,17 @@ class _LoginPageState extends State<LoginPage> {
   final Color buttonColor = darkPrimaryColor;
   final double borderRadius = 25.0;
 
+  void _handleLogin() {
+    if (_usernameController.text == "username" &&
+        _passwordController.text == "password") {
+      Navigator.pushReplacementNamed(context, '/mainscreen');
+    } else {
+      setState(() {
+        _errMsg = "Login Failed";
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -67,9 +78,9 @@ class _LoginPageState extends State<LoginPage> {
                         width: 260,
                         child: Column(
                           children: [
-                          _buildTextField("Username", _usernameController, false),
+                          _buildTextField("Username", _usernameController, false, textInputAction: TextInputAction.next),
                           const SizedBox(height: 12, width: 120,),
-                          _buildTextField("Password", _passwordController, true),
+                          _buildTextField("Password", _passwordController, true, textInputAction: TextInputAction.done, onSubmitted: (_) => _handleLogin(),),
                           if (_errMsg.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 8.0),
@@ -84,14 +95,7 @@ class _LoginPageState extends State<LoginPage> {
                               width: 120,
                               height: 30,
                               child: ElevatedButton(
-                                onPressed: () {
-                                  if (_usernameController.text == "username" && 
-                                      _passwordController.text == "password") {
-                                    Navigator.pushReplacementNamed(context, '/mainscreen');
-                                  } else {
-                                    setState(() => _errMsg = "Login Failed");
-                                  }
-                                },
+                                onPressed: _handleLogin,
                                 child: const Text("Login"),
                               ),
                             ),
@@ -112,12 +116,15 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildTextField(String hint, TextEditingController controller, bool isObscure) {
+  Widget _buildTextField(String hint, TextEditingController controller, bool isObscure,
+                         {TextInputAction? textInputAction, ValueChanged<String>? onSubmitted,}) {
     return SizedBox(
       width: 260,
       child: TextField(
         controller: controller,
         obscureText: isObscure,
+        textInputAction: textInputAction,
+        onSubmitted: onSubmitted,
         decoration: InputDecoration(
           hintText: hint,
         ),
