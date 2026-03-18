@@ -1,9 +1,10 @@
 import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:study_spot_locator/constants.dart';
 
 class ApiService {
-  static const String baseUrl = "http://172.31.249.245:5000";  // use IP
+  static String get baseUrl => dotenv.get('API_BASE_URL', fallback: 'http://localhost:5000');
 
   static Future<bool> saveUserPreferences({
     required String username,

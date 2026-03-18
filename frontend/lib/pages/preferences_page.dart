@@ -124,7 +124,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 50,),
+            const SizedBox(height: 35,),
           ],          
         ),
       ),
