@@ -57,56 +57,34 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SelectableText("Bookmarks", style: primaryTitleStyle),
-                  const Divider(color: primaryBlack, thickness: 1.5),
-                  const SizedBox(height: 15,),
-
-                  // SizedBox(
-                  //   width: double.infinity,
-                  //   height: 45,
-                  //   child: ElevatedButton(
-                  //     onPressed: () {},
-                  //     style: ElevatedButton.styleFrom(
-                  //       backgroundColor: primaryGray,
-                  //       foregroundColor: primaryBlack,
-                  //       elevation: 0,
-                  //       shape: const RoundedRectangleBorder(
-                  //         borderRadius: BorderRadius.zero,
-                  //       ),
-                  //     ),
-                  //     child: const Text(
-                  //       "Sort Placeholder",
-                  //       style: primaryTextStyle,
-                  //     ),
-                  //   ),
-                  // ),
-                ],
-              ),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SelectableText("Bookmarks", style: primaryTitleStyle),
+                const Divider(color: primaryBlack, thickness: 1.5),
+                const SizedBox(height: 15),
+                
+                Center(
+                  child: Wrap(
+                    spacing: 20,
+                    runSpacing: 20,
+                    alignment: WrapAlignment.center,
+                    children: spots.map((spot) {
+                      return ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 400), 
+                        child: LocationCard(spot: spot),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(height: 25,),
+              ],
             ),
-            const SizedBox(height: 10,),
-
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(20),
-                itemCount: spots.length,
-                itemBuilder:(context, index) {
-                  final spot = spots[index];
-                  
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 25),
-                    child: LocationCard(spot: spot,),
-                  );
-                },
-              ),
-            )
-          ],
+          ),
         ),
       ),
     );
