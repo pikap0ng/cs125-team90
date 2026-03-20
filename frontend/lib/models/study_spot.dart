@@ -123,7 +123,7 @@ class StudySpot {
     if (lower.contains('langson')) return 'assets/langson_library.png';
     if (lower.contains('student center')) return 'assets/student_center.png';
     // Default fallback for spots without a local image
-    return 'assets/langson_library.png';
+    return '';
   }
 
   static String _scoreToStatus(num score) {
