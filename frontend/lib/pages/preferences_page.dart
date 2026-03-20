@@ -37,7 +37,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
     });
 
     bool success = await ApiService.saveUserPreferences(
-      username: "username",
+      username: "username",  // save username in session
       noise: _useNoisePref ? _noiseLevel : -1.0,
       distance: _useDistancePref ? _distance : -1.0,
       amenities: _preferences,
@@ -87,7 +87,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
             const SizedBox(height: 20,),
 
             _buildContainerSection([
-              ..._preferences.keys.map((key) => _buildCheckOption(key)).toList(),
+              ..._preferences.keys.map((key) => _buildCheckOption(key)),
             ]),
             
             const SizedBox(height: 20,),
