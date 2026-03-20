@@ -57,6 +57,61 @@ class _LocationCardState extends State<LocationCard> {
     }
   }
 
+  Widget _buildSpotImage({required double height, BoxFit fit = BoxFit.cover}) {
+    if (widget.spot.hasNetworkImage) {
+      return Image.network(
+        widget.spot.networkImageUrl!,
+        height: height,
+        width: double.infinity,
+        fit: fit,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            height: height,
+            color: lightPrimaryColor,
+            alignment: Alignment.center,
+            child: const CircularProgressIndicator(
+              color: darkPrimaryColor,
+              strokeWidth: 2,
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          // Fall back to asset image on network error
+          return Image.asset(
+            widget.spot.imagePath,
+            height: height,
+            width: double.infinity,
+            fit: fit,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                height: height,
+                color: primaryGray,
+                alignment: Alignment.center,
+                child: const Icon(Icons.broken_image, color: primaryBlack, size: 40),
+              );
+            },
+          );
+        },
+      );
+    }
+
+    return Image.asset(
+      widget.spot.imagePath,
+      height: height,
+      width: double.infinity,
+      fit: fit,
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          height: height,
+          color: primaryGray,
+          alignment: Alignment.center,
+          child: const Icon(Icons.broken_image, color: primaryBlack, size: 40),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -73,7 +128,6 @@ class _LocationCardState extends State<LocationCard> {
               context,
               MaterialPageRoute(builder: (context) => DetailsPage(spot: widget.spot)),
             );
-            // Refresh bookmark state when returning from details
             if (mounted) {
               setState(() {
                 _isBookmarked = widget.spot.isBookmarked;
@@ -93,20 +147,7 @@ class _LocationCardState extends State<LocationCard> {
                   children: [
                     ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
-                      child: Image.asset(
-                        widget.spot.imagePath,
-                        height: 180,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            height: 180,
-                            color: primaryGray,
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.broken_image, color: primaryBlack, size: 40),
-                          );
-                        },
-                      ),
+                      child: _buildSpotImage(height: 180),
                     ),
                     Positioned(
                       top: 10,
@@ -157,7 +198,6 @@ class _LocationCardState extends State<LocationCard> {
                       const SizedBox(height: 8),
                       _infoRow(Icons.bar_chart, widget.spot.status),
                       const SizedBox(height: 8),
-                      // Show explanation snippets if available
                       if (widget.spot.explanation.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),

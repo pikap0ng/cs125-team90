@@ -2,9 +2,10 @@ class StudySpot {
   final String title;
   final String address;
   final String imagePath;
+  final String? networkImageUrl;
   final String status;
   final bool isOpen;
-  final int travelTimeInMinutes;  // Minutes
+  final int travelTimeInMinutes;
   bool isBookmarked;
 
   final String operatingHours;
@@ -22,7 +23,6 @@ class StudySpot {
   final String noiseLevel;
   final int distanceFromCampus;
 
-  // Backend fields for API integration
   final String canonicalKey;
   final double score;
   final List<String> explanation;
@@ -35,6 +35,7 @@ class StudySpot {
     required this.imagePath,
     required this.isOpen,
     required this.isBookmarked,
+    this.networkImageUrl,
 
     this.operatingHours = "6:00am - 10:00pm",
     this.phoneNumber = "(000) 000 - 0000",
@@ -65,6 +66,7 @@ class StudySpot {
     final charging = features['charging'] as String? ?? '';
     final openNow = features['openNow'];
     final cKey = json['canonicalKey'] as String? ?? '';
+    final photoUrl = features['photoUrl'] as String?;
 
     String locType = "Other";
     final lower = name.toLowerCase();
@@ -74,7 +76,6 @@ class StudySpot {
       locType = "Cafe";
     }
 
-    // Estimate travel time from distance (roughly 3mph walking)
     int travelMins = (distMiles / 3.0 * 60).round();
     if (travelMins < 1 && distMiles > 0) travelMins = 1;
 
@@ -87,6 +88,7 @@ class StudySpot {
       title: name,
       address: json['address'] as String? ?? (onCampus ? 'UCI Campus' : 'Irvine, CA'),
       imagePath: _pickImage(name),
+      networkImageUrl: (photoUrl != null && photoUrl.isNotEmpty) ? photoUrl : null,
       status: _scoreToStatus(json['score'] as num? ?? 0),
       isOpen: openNow == true,
       travelTimeInMinutes: travelMins,
@@ -101,12 +103,15 @@ class StudySpot {
       isFreshmanOnly: false,
       isBright: false,
       noiseLevel: locType == "Library" ? "Quiet" : "Moderate",
-      distanceFromCampus: (distMiles * 1609).round(), // just miles to meters
+      distanceFromCampus: (distMiles * 1609).round(),
       canonicalKey: cKey,
       score: (json['score'] as num?)?.toDouble() ?? 0.0,
       explanation: explanationList,
     );
   }
+
+  /// Returns true if this spot has a network photo from Google Places
+  bool get hasNetworkImage => networkImageUrl != null && networkImageUrl!.isNotEmpty;
 
   String get travelTimeDisplay {
     if (travelTimeInMinutes >= 60) {
@@ -122,7 +127,6 @@ class StudySpot {
     if (lower.contains('science library')) return 'assets/science_library.png';
     if (lower.contains('langson')) return 'assets/langson_library.png';
     if (lower.contains('student center')) return 'assets/student_center.png';
-    // Default fallback for spots without a local image
     return 'assets/langson_library.png';
   }
 

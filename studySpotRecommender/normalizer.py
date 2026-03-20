@@ -67,6 +67,7 @@ def deduplicate(records: Iterable[SourceRecord], distanceThresholdM: float = 50.
                 "wifi": record.wifi,
                 "charging": record.charging,
                 "transportNotes": record.transportNotes,
+                "photoUrl": record.photoUrl,
             }.items():
                 if _isMissingFeatureValue(value):
                     continue

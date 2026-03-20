@@ -41,6 +41,44 @@ class _DetailsPageState extends State<DetailsPage> {
     }
   }
 
+  Widget _buildSpotImage({required double height, BoxFit fit = BoxFit.contain}) {
+    if (widget.spot.hasNetworkImage) {
+      return Image.network(
+        widget.spot.networkImageUrl!,
+        height: height,
+        width: double.infinity,
+        fit: fit,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            height: height,
+            color: lightPrimaryColor,
+            alignment: Alignment.center,
+            child: const CircularProgressIndicator(
+              color: darkPrimaryColor,
+              strokeWidth: 2,
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return Image.asset(
+            widget.spot.imagePath,
+            height: height,
+            width: double.infinity,
+            fit: fit,
+          );
+        },
+      );
+    }
+
+    return Image.asset(
+      widget.spot.imagePath,
+      height: height,
+      width: double.infinity,
+      fit: fit,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -88,18 +126,21 @@ class _DetailsPageState extends State<DetailsPage> {
               const SizedBox(height: 10),
               Text(widget.spot.title, style: primaryTitleStyle.copyWith(fontSize: 32)),
               const Divider(color: primaryBlack, thickness: 1.5),
-              const SizedBox(height: 20,),
+              const SizedBox(height: 20),
 
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: Image.asset(widget.spot.imagePath, height: 200, width: double.infinity, fit: BoxFit.contain,),
+                child: _buildSpotImage(height: 200, fit: BoxFit.cover),
               ),
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text("● ○ ○ ○ ○ ○", style: TextStyle(color: primaryGray))
-                ),
-              ),
+              if (!widget.spot.hasNetworkImage)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: Text("● ○ ○ ○ ○ ○", style: TextStyle(color: primaryGray))
+                  ),
+                )
+              else
+                const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -116,9 +157,9 @@ class _DetailsPageState extends State<DetailsPage> {
                   ],
                 ),
               ),
-              const SizedBox(height: 20,),
-              const Text("Additional Details", style: primaryTextStyle,),
-              const SizedBox(height: 10,),
+              const SizedBox(height: 20),
+              const Text("Additional Details", style: primaryTextStyle),
+              const SizedBox(height: 10),
               _buildDetailsBox(widget.spot),
             ],
           ),
@@ -166,7 +207,7 @@ class _DetailsPageState extends State<DetailsPage> {
       child: Row(
         children: [
           Icon(icon, size: 20, color: isRating ? primaryGold : primaryBlack),
-          const SizedBox(width: 10,),
+          const SizedBox(width: 10),
           Expanded(child: SelectableText(text)),
         ],
       ),

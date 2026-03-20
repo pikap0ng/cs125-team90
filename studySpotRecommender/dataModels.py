@@ -35,6 +35,7 @@ class SourceRecord:
     wifi: str | None = None
     charging: str | None = None
     transportNotes: str | None = None
+    photoUrl: str | None = None
     onCampus: bool = False
     fetchedAt: str = field(default_factory=lambda: datetime.now(tz=timezone.utc).isoformat())
     raw: dict[str, Any] = field(default_factory=dict)
@@ -73,6 +74,7 @@ class CanonicalStudySpot:
                 "wifi": record.wifi,
                 "charging": record.charging,
                 "transportNotes": record.transportNotes,
+                "photoUrl": record.photoUrl,
             },
             featureProvenance={
                 key: {
@@ -80,7 +82,7 @@ class CanonicalStudySpot:
                     "method": "apiOrScrape",
                     "timestamp": datetime.now(tz=timezone.utc).isoformat(),
                 }
-                for key in ["hoursText", "openNow", "parking", "wifi", "charging", "transportNotes"]
+                for key in ["hoursText", "openNow", "parking", "wifi", "charging", "transportNotes", "photoUrl"]
             },
             confidence={
                 "hoursText": 0.8 if record.hoursText else 0.0,
@@ -89,6 +91,7 @@ class CanonicalStudySpot:
                 "wifi": 0.7 if record.wifi else 0.0,
                 "charging": 0.5 if record.charging else 0.0,
                 "transportNotes": 0.6 if record.transportNotes else 0.0,
+                "photoUrl": 0.9 if record.photoUrl else 0.0,
             },
             lastRefreshedAt=datetime.now(tz=timezone.utc).isoformat(),
         )

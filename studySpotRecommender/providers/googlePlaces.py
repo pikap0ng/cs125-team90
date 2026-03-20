@@ -22,7 +22,8 @@ class GooglePlacesProvider(BaseProvider):
         "places.regularOpeningHours,"
         "places.parkingOptions,"
         "places.outdoorSeating,"
-        "places.accessibilityOptions"
+        "places.accessibilityOptions,"
+        "places.photos"
     )
 
     # Only include place types where studying is reasonable
@@ -78,7 +79,6 @@ class GooglePlacesProvider(BaseProvider):
         primaryType = place.get("primaryType", "")
         name = place.get("displayName", {}).get("text", "").lower()
 
-        # Exclude if primary type is clearly a restaurant/food establishment
         excludeTypes = {
             "restaurant", "bar", "night_club", "meal_delivery",
             "meal_takeaway", "food", "liquor_store", "fast_food_restaurant",
@@ -93,12 +93,10 @@ class GooglePlacesProvider(BaseProvider):
         if primaryType in excludeTypes:
             return False
         if any(t in excludeTypes for t in placeTypes):
-            # Only exclude if none of the study-friendly types are present
             studyTypes = {"library", "book_store", "cafe", "coffee_shop", "university", "community_center"}
             if not any(t in studyTypes for t in placeTypes):
                 return False
 
-        # Exclude by name patterns that are clearly not study spots
         excludeNamePatterns = [
             "steakhouse", "grill", "bbq", "barbecue", "sushi", "ramen",
             "pizza", "burger", "taco", "wings", "seafood", "buffet",
@@ -109,6 +107,27 @@ class GooglePlacesProvider(BaseProvider):
             return False
 
         return True
+
+    def _buildPhotoUrl(self, place: dict) -> str | None:
+        """Extract the first photo reference and build a Google Places photo URL.
+
+        The Places API v1 returns photos as a list of objects with a 'name' field
+        like 'places/PLACE_ID/photos/PHOTO_REF'. We use the Media endpoint to
+        fetch the actual image at a reasonable size.
+        """
+        photos = place.get("photos", [])
+        if not photos:
+            return None
+
+        photoName = photos[0].get("name")
+        if not photoName:
+            return None
+
+        # maxWidthPx=400 keeps the image small enough for thumbnails
+        return (
+            f"https://places.googleapis.com/v1/{photoName}/media"
+            f"?maxWidthPx=400&key={self.config.googleApiKey}"
+        )
 
     def fetch(self) -> list[SourceRecord]:
         if not self.config.googleApiKey:
@@ -132,7 +151,6 @@ class GooglePlacesProvider(BaseProvider):
                     continue
                 seenPlaceIds.add(placeId)
 
-                # Filter out non-study-appropriate places
                 if not self._isStudyAppropriate(place):
                     if self.config.verbose:
                         placeName = place.get("displayName", {}).get("text", "Unknown")
@@ -144,6 +162,9 @@ class GooglePlacesProvider(BaseProvider):
                 currentHours = place.get("currentOpeningHours", {})
                 regularHours = place.get("regularOpeningHours", {})
                 weekdayDescriptions = currentHours.get("weekdayDescriptions") or regularHours.get("weekdayDescriptions") or [None]
+
+                # Build photo URL from the first available photo
+                photoUrl = self._buildPhotoUrl(place)
 
                 records.append(
                     SourceRecord(
@@ -159,6 +180,7 @@ class GooglePlacesProvider(BaseProvider):
                         wifi=None,
                         charging="accessibility options available" if place.get("accessibilityOptions") else None,
                         transportNotes="Supports route-time hydration via Distance Matrix",
+                        photoUrl=photoUrl,
                         raw=place,
                     )
                 )
