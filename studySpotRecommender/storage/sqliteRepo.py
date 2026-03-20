@@ -82,6 +82,15 @@ class SQLiteRepository:
                 )
                 """
             )
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    username TEXT PRIMARY KEY,
+                    password TEXT NOT NULL
+                )
+                """
+            )
             self._runMigrations(conn)
             conn.commit()
 
