@@ -1,44 +1,48 @@
 from __future__ import annotations
 
 import re
-from collections import deque
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 from studySpotRecommender.dataModels import SourceRecord
 from .providerBase import BaseProvider
 
 
+# Curated list of physical UCI study locations.
+# Each entry produces exactly one SourceRecord.
+# Add new physical study spaces here as they open.
+_KNOWN_UCI_STUDY_SPOTS: tuple[dict, ...] = (
+    {
+        "name": "Langson Library",
+        "url": "https://www.lib.uci.edu/langson",
+    },
+    {
+        "name": "Science Library",
+        "url": "https://www.lib.uci.edu/science",
+    },
+    {
+        "name": "Gateway Study Center",
+        "url": "https://www.lib.uci.edu/gateway-study-center",
+    },
+    {
+        "name": "Multimedia Resources Center",
+        "url": "https://www.lib.uci.edu/mrc",
+    },
+    {
+        "name": "Grunigen Medical Library",
+        "url": "https://www.lib.uci.edu/medical",
+    },
+)
+
+# Shared values for all on-campus UCI library spots.
+_ON_CAMPUS_PARKING = "permit-based campus parking"
+_ON_CAMPUS_WIFI = "Campus WiFi expected"
+_ON_CAMPUS_TRANSPORT = "Campus shuttle and OC transit nearby"
+_UCI_ADDRESS = "University of California, Irvine"
+
+
 class UCIProvider(BaseProvider):
     name = "uci"
-
-    seedUrls = (
-        "https://www.lib.uci.edu/study-space-locator",
-        "https://www.lib.uci.edu/hours",
-        "https://www.lib.uci.edu/gateway-study-center",
-        "https://www.lib.uci.edu/langson",
-        "https://www.lib.uci.edu/science",
-        "https://www.lib.uci.edu/mrc",
-        "https://www.lib.uci.edu/locations-directions-parking",
-        "https://spaces.lib.uci.edu/appointments",
-        "https://parking.uci.edu/",
-    )
-    allowedDomains = ("uci.edu",)
-    discoveryKeywords = (
-        "study",
-        "library",
-        "langson",
-        "science",
-        "gateway",
-        "learning",
-        "reserve",
-        "hours",
-        "parking",
-        "commons",
-        "space",
-        "mrc",
-    )
 
     def _fetchHtml(self, url: str) -> str | None:
         req = Request(url, headers={"User-Agent": self.config.userAgent})
@@ -48,84 +52,62 @@ class UCIProvider(BaseProvider):
         except (HTTPError, URLError):
             return None
 
-    def _canonicalizeUrl(self, url: str) -> str:
-        parsed = urlparse(url)
-        normalizedPath = parsed.path.rstrip("/") or "/"
-        return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), normalizedPath, "", "", ""))
+    @staticmethod
+    def _extractHours(html: str) -> str | None:
+        """Extract hours text from HTML only when found near a recognized hours label.
 
-    def _isAllowedUciUrl(self, url: str) -> bool:
-        parsed = urlparse(url)
-        if parsed.scheme not in {"https", "http"}:
-            return False
-        host = parsed.netloc.lower()
-        return any(host.endswith(domain) for domain in self.allowedDomains)
+        The match must be anchored to a contextual keyword (hours, open, close) to
+        avoid pulling in random time-like patterns from unrelated page content such as
+        phone numbers, dates, or event listings.
+        """
+        text = re.sub(r"<[^>]+>", " ", html)
+        text = re.sub(r"\s+", " ", text)
 
-    def _extractLinks(self, sourceUrl: str, html: str) -> list[str]:
-        links: list[str] = []
-        for match in re.finditer(r'href=["\']([^"\']+)["\']', html, flags=re.I):
-            absolute = urljoin(sourceUrl, match.group(1).strip())
-            if not self._isAllowedUciUrl(absolute):
-                continue
-            canonical = self._canonicalizeUrl(absolute)
-            text = canonical.lower()
-            if any(keyword in text for keyword in self.discoveryKeywords):
-                links.append(canonical)
-        return links
+        # Pattern A: "Library Hours: Mon–Thu 8am–midnight" style
+        weekday_match = re.search(
+            r"(?:library\s+hours?|building\s+hours?|open(?:ing)?\s+hours?|hours?\s*:)"
+            r"[^.\n]{0,40}?"
+            r"((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[^.\n<]{5,80}?"
+            r"\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))",
+            text, re.I,
+        )
+        if weekday_match:
+            return weekday_match.group(1).strip()
 
-    def _looksLikeStudyResource(self, url: str, title: str, textBlob: str) -> bool:
-        haystack = f"{url} {title} {textBlob}".lower()
-        return any(keyword in haystack for keyword in self.discoveryKeywords)
+        # Pattern B: bare time range near "hours" keyword, e.g. "Hours: 8:00 AM – 10:00 PM"
+        range_match = re.search(
+            r"(?:hours?|open)\s*[:\-]?\s*"
+            r"(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm)"
+            r"[^.\n<]{1,30}?"
+            r"\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))",
+            text, re.I,
+        )
+        if range_match:
+            return range_match.group(1).strip()
+
+        return None
 
     def fetch(self) -> list[SourceRecord]:
         records: list[SourceRecord] = []
-        seenUrls: set[str] = set()
-        queue = deque(self._canonicalizeUrl(url) for url in self.seedUrls)
 
-        maxRecords = max(self.config.maxResultsPerSource, 1)
-        maxPagesToScan = max(maxRecords * 4, 40)
-        scannedPages = 0
-
-        while queue and len(records) < maxRecords and scannedPages < maxPagesToScan:
-            url = queue.popleft()
-            if url in seenUrls:
-                continue
-            seenUrls.add(url)
-
-            html = self._fetchHtml(url)
-            scannedPages += 1
-            if not html:
-                continue
-
-            for discoveredUrl in self._extractLinks(url, html):
-                if discoveredUrl not in seenUrls:
-                    queue.append(discoveredUrl)
-
-            titleMatch = re.search(r"<title>(.*?)</title>", html, flags=re.I | re.S)
-            title = re.sub(r"\s+", " ", titleMatch.group(1)).strip() if titleMatch else "UCI Study Resource"
-            textBlob = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
-
-            if not self._looksLikeStudyResource(url, title, textBlob):
-                continue
-
-            hoursMatch = re.search(r"(\d{1,2}:?\d{0,2}\s?(AM|PM).{0,40}?\d{1,2}:?\d{0,2}\s?(AM|PM))", textBlob, re.I)
-            parkingHint = "permit-based parking" if "permit" in textBlob.lower() else None
-            chargingHint = "EV charging info available" if "charging" in textBlob.lower() else None
+        for spot in _KNOWN_UCI_STUDY_SPOTS:
+            html = self._fetchHtml(spot["url"])
+            hoursText: str | None = self._extractHours(html) if html else None
 
             records.append(
                 SourceRecord(
                     provider=self.name,
-                    sourceId=url,
-                    name=title,
+                    sourceId=spot["url"],
+                    name=spot["name"],
                     latitude=self.config.uciLat,
                     longitude=self.config.uciLon,
-                    address="University of California, Irvine",
-                    hoursText=hoursMatch.group(1) if hoursMatch else None,
-                    parking=parkingHint,
-                    charging=chargingHint,
-                    wifi="Campus WiFi expected",
-                    transportNotes="Campus shuttle and OC transit nearby",
+                    address=_UCI_ADDRESS,
+                    hoursText=hoursText,
+                    parking=_ON_CAMPUS_PARKING,
+                    wifi=_ON_CAMPUS_WIFI,
+                    transportNotes=_ON_CAMPUS_TRANSPORT,
                     onCampus=True,
-                    raw={"url": url, "scannedPages": scannedPages},
+                    raw={"url": spot["url"]},
                 )
             )
 

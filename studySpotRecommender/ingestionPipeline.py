@@ -10,7 +10,6 @@ from studySpotRecommender.providers import (
     GooglePlacesProvider,
     OSMProvider,
     UCIProvider,
-    YelpProvider,
 )
 from studySpotRecommender.storage.sqliteRepo import SQLiteRepository
 
@@ -28,7 +27,6 @@ class IngestionPipeline:
         allProviders = [
             UCIProvider(config),
             GooglePlacesProvider(config),
-            YelpProvider(config),
             FoursquareProvider(config),
             OSMProvider(config),
         ]

@@ -20,7 +20,6 @@ class AppConfig:
     printRecordsPerProvider: int = 0
 
     googleApiKey: str | None = field(default_factory=lambda: os.getenv("GOOGLE_API_KEY"))
-    yelpApiKey: str | None = field(default_factory=lambda: os.getenv("YELP_API_KEY"))
     foursquareApiKey: str | None = field(default_factory=lambda: os.getenv("FOURSQUARE_API_KEY"))
 
     @property
