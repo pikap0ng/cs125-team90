@@ -24,7 +24,7 @@ class ApiService {
           "noise_level": noise,
           "max_distance": distance,
           "amenities": amenities.map((key, value) => MapEntry(key, prefToInt(value))),
-          "location_type": locationType,
+          "location_type": locationType.map((key, value) => MapEntry(key, prefToInt(value))),
         })
       );
       return response.statusCode == 200;
