@@ -32,6 +32,25 @@ class GooglePlacesProvider(BaseProvider):
         ["community_center", "university"],
     )
 
+    # Any spot with at least one of these types is always kept, no matter what
+    _STUDY_FRIENDLY_TYPES = {
+        "library", "book_store", "cafe", "coffee_shop",
+        "university", "community_center", "coworking_space",
+    }
+
+    # Spots whose primary type is one of these AND that have zero study-friendly types are rejected
+    _EXCLUDE_PRIMARY_TYPES = {
+        "steak_house", "seafood_restaurant", "pizza_restaurant",
+        "sushi_restaurant", "barbecue_restaurant", "mexican_restaurant",
+        "chinese_restaurant", "japanese_restaurant", "korean_restaurant",
+        "thai_restaurant", "vietnamese_restaurant", "italian_restaurant",
+        "american_restaurant", "indian_restaurant", "mediterranean_restaurant",
+        "hamburger_restaurant", "ramen_restaurant", "sandwich_shop",
+        "ice_cream_shop", "dessert_shop", "bar", "night_club",
+        "meal_delivery", "meal_takeaway", "liquor_store",
+        "fast_food_restaurant",
+    }
+
     def _searchNearby(self, includedTypes: list[str], maxResultCount: int) -> dict[str, object] | None:
         payload = {
             "includedTypes": includedTypes,
@@ -72,48 +91,49 @@ class GooglePlacesProvider(BaseProvider):
                 print(f"[provider] google: invalid JSON response: {err}")
             return None
 
-    @staticmethod
-    def _isStudyAppropriate(place: dict) -> bool:
-        """Filter out places that are not suitable for studying (restaurants, bars, etc.)."""
-        placeTypes = place.get("types", [])
+    @classmethod
+    def _isStudyAppropriate(cls, place: dict) -> bool:
+        placeTypes = set(place.get("types", []))
         primaryType = place.get("primaryType", "")
         name = place.get("displayName", {}).get("text", "").lower()
 
-        excludeTypes = {
-            "restaurant", "bar", "night_club", "meal_delivery",
-            "meal_takeaway", "food", "liquor_store", "fast_food_restaurant",
-            "steak_house", "seafood_restaurant", "pizza_restaurant",
-            "sushi_restaurant", "barbecue_restaurant", "mexican_restaurant",
-            "chinese_restaurant", "japanese_restaurant", "korean_restaurant",
-            "thai_restaurant", "vietnamese_restaurant", "italian_restaurant",
-            "american_restaurant", "indian_restaurant", "mediterranean_restaurant",
-            "hamburger_restaurant", "ramen_restaurant", "sandwich_shop",
-            "ice_cream_shop", "dessert_shop",
-        }
-        if primaryType in excludeTypes:
-            return False
-        if any(t in excludeTypes for t in placeTypes):
-            studyTypes = {"library", "book_store", "cafe", "coffee_shop", "university", "community_center"}
-            if not any(t in studyTypes for t in placeTypes):
-                return False
+        # Step 1: any study-friendly type means automatic keep
+        if placeTypes & cls._STUDY_FRIENDLY_TYPES:
+            return True
+        if primaryType in cls._STUDY_FRIENDLY_TYPES:
+            return True
 
+        # Step 2: name contains study-friendly keywords
+        studyNameKeywords = [
+            "library", "cafe", "coffee", "tea house", "study",
+            "learning", "coworking", "book",
+        ]
+        if any(kw in name for kw in studyNameKeywords):
+            return True
+
+        # Step 3: explicit restaurant subcategory with no study type match
+        if primaryType in cls._EXCLUDE_PRIMARY_TYPES:
+            return False
+
+        # Step 4: name-based rejection for obvious non-study spots
         excludeNamePatterns = [
             "steakhouse", "grill", "bbq", "barbecue", "sushi", "ramen",
             "pizza", "burger", "taco", "wings", "seafood", "buffet",
-            "brewery", "bar ", " bar", "pub ", " pub", "lounge",
-            "nightclub", "karaoke",
+            "brewery", "pub ", " pub", "nightclub", "karaoke",
+            "shake shack", "mcdonald", "chick-fil-a", "wendy",
+            "panda express", "del taco", "jack in the box",
         ]
         if any(pattern in name for pattern in excludeNamePatterns):
             return False
 
+        # Step 5: everything else passes
         return True
 
     def _buildPhotoUrl(self, place: dict) -> str | None:
-        """Extract the first photo reference and build a Google Places photo URL.
+        """Extract the first photo reference and resolve to a direct image URL.
 
-        The Places API v1 returns photos as a list of objects with a 'name' field
-        like 'places/PLACE_ID/photos/PHOTO_REF'. We use the Media endpoint to
-        fetch the actual image at a reasonable size.
+        Uses skipHttpRedirect=true to get the resolved photoUri from the API
+        instead of a 302 redirect, so Flutter gets a direct image link.
         """
         photos = place.get("photos", [])
         if not photos:
@@ -123,7 +143,27 @@ class GooglePlacesProvider(BaseProvider):
         if not photoName:
             return None
 
-        # maxWidthPx=400 keeps the image small enough for thumbnails
+        # Request the resolved URL via skipHttpRedirect
+        mediaUrl = (
+            f"https://places.googleapis.com/v1/{photoName}/media"
+            f"?maxWidthPx=400&skipHttpRedirect=true&key={self.config.googleApiKey}"
+        )
+
+        try:
+            req = Request(mediaUrl, headers={"Accept": "application/json"})
+            with urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                resolvedUrl = data.get("photoUri")
+                if resolvedUrl:
+                    if self.config.verbose:
+                        placeName = place.get("displayName", {}).get("text", "?")
+                        print(f"[provider] google: resolved photo for {placeName}")
+                    return resolvedUrl
+        except Exception as err:
+            if self.config.verbose:
+                print(f"[provider] google: photo resolve failed: {err}")
+
+        # Fallback to the redirect URL (Flutter follows 302s)
         return (
             f"https://places.googleapis.com/v1/{photoName}/media"
             f"?maxWidthPx=400&key={self.config.googleApiKey}"
@@ -154,7 +194,8 @@ class GooglePlacesProvider(BaseProvider):
                 if not self._isStudyAppropriate(place):
                     if self.config.verbose:
                         placeName = place.get("displayName", {}).get("text", "Unknown")
-                        print(f"[provider] google: filtered out non-study spot: {placeName}")
+                        pType = place.get("primaryType", "?")
+                        print(f"[provider] google: filtered out: {placeName} (primaryType={pType})")
                     continue
 
                 parkingObj = place.get("parkingOptions", {})
@@ -163,7 +204,6 @@ class GooglePlacesProvider(BaseProvider):
                 regularHours = place.get("regularOpeningHours", {})
                 weekdayDescriptions = currentHours.get("weekdayDescriptions") or regularHours.get("weekdayDescriptions") or [None]
 
-                # Build photo URL from the first available photo
                 photoUrl = self._buildPhotoUrl(place)
 
                 records.append(
