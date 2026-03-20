@@ -15,6 +15,7 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
 
   final GlobalKey<HomePageState> _homeKey = GlobalKey<HomePageState>();
+  final GlobalKey<SearchPageState> _searchKey = GlobalKey<SearchPageState>();
   
   late final List<Widget> _pages;
 
@@ -23,7 +24,7 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     _pages = [
       HomePage(key: _homeKey),
-      const SearchPage(),
+      SearchPage(key: _searchKey),
       const PreferencesPage(),
     ];
   }
@@ -35,6 +36,11 @@ class _MainScreenState extends State<MainScreen> {
     // Refresh bookmarks whenever navigating to the bookmarks tab
     if (index == 0) {
       _homeKey.currentState?.refresh();
+    }
+    // Refresh search results whenever navigating to the search tab
+    // This picks up any preference changes made on the preferences tab
+    if (index == 1) {
+      _searchKey.currentState?.refresh();
     }
   }
 

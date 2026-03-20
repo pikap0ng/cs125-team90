@@ -9,10 +9,10 @@ class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
   @override
-  State<SearchPage> createState() => _SearchPageState();
+  State<SearchPage> createState() => SearchPageState();
 }
 
-class _SearchPageState extends State<SearchPage> {
+class SearchPageState extends State<SearchPage> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
 
@@ -31,6 +31,14 @@ class _SearchPageState extends State<SearchPage> {
     _searchController.dispose();
     _debounce?.cancel();
     super.dispose();
+  }
+
+  /// Called externally (e.g. from MainScreen) to re-fetch results.
+  /// This picks up preference changes saved on the Preferences tab.
+  void refresh() {
+    _loadRecommendations(
+      query: _searchController.text.isEmpty ? null : _searchController.text,
+    );
   }
 
   Future<void> _loadRecommendations({String? query}) async {
@@ -146,7 +154,6 @@ class _SearchPageState extends State<SearchPage> {
                       child: LocationCard(
                         spot: spot,
                         onBookmarkChanged: () {
-                          // Refresh to update bookmark states
                           _loadRecommendations(
                             query: _searchController.text.isEmpty ? null : _searchController.text,
                           );
