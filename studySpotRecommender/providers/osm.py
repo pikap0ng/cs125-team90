@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from studySpotRecommender.dataModels import SourceRecord
 from .providerBase import BaseProvider
+
+_DEFAULT_CACHE_TTL_S = 6 * 60 * 60
+
+_CACHE_DIR = "data/osm_cache"
 
 
 class OSMProvider(BaseProvider):
@@ -17,6 +24,11 @@ class OSMProvider(BaseProvider):
         "https://overpass.nchc.org.tw/api/interpreter",
         "https://lz4.overpass-api.de/api/interpreter",
     )
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.cacheTtlS = _DEFAULT_CACHE_TTL_S
+        self.cacheDir = _CACHE_DIR
 
     def _buildQuery(self) -> str:
         radius = self.config.radiusMeters
@@ -34,9 +46,51 @@ class OSMProvider(BaseProvider):
 out center tags;
 """.strip()
 
-    def fetch(self) -> list[SourceRecord]:
-        payload = urlencode({"data": self._buildQuery()}).encode("utf-8")
-        responsePayload: dict[str, object] = {}
+    def _cacheKey(self, query: str) -> str:
+        """Generate a deterministic cache filename from the query string."""
+        queryHash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
+        return f"osm_{queryHash}.json"
+
+    def _readCache(self, cacheFile: str) -> dict[str, object] | None:
+        """Read cached Overpass response if it exists and is within TTL."""
+        cachePath = os.path.join(self.cacheDir, cacheFile)
+        if not os.path.exists(cachePath):
+            return None
+
+        try:
+            fileAge = time.time() - os.path.getmtime(cachePath)
+            if fileAge > self.cacheTtlS:
+                if self.config.verbose:
+                    print(f"[osm] cache expired ({fileAge:.0f}s old, TTL={self.cacheTtlS}s)")
+                return None
+
+            with open(cachePath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if self.config.verbose:
+                elementCount = len(data.get("elements", []))
+                print(f"[osm] using cached response ({elementCount} elements, {fileAge:.0f}s old)")
+            return data
+        except (json.JSONDecodeError, OSError) as err:
+            if self.config.verbose:
+                print(f"[osm] cache read error: {err}")
+            return None
+
+    def _writeCache(self, cacheFile: str, data: dict[str, object]) -> None:
+        """Write Overpass response to cache."""
+        try:
+            os.makedirs(self.cacheDir, exist_ok=True)
+            cachePath = os.path.join(self.cacheDir, cacheFile)
+            with open(cachePath, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+            if self.config.verbose:
+                print(f"[osm] cached response to {cachePath}")
+        except OSError as err:
+            if self.config.verbose:
+                print(f"[osm] cache write error: {err}")
+
+    def _fetchFromEndpoints(self, query: str) -> dict[str, object]:
+        """Try each Overpass endpoint in order, return first successful response."""
+        payload = urlencode({"data": query}).encode("utf-8")
 
         for endpoint in self.endpoints:
             req = Request(
@@ -53,24 +107,44 @@ out center tags;
                 with urlopen(req, timeout=max(self.config.requestTimeoutS, 60)) as response:
                     body = response.read().decode("utf-8")
                     responsePayload = json.loads(body)
-                    break
+                    if self.config.verbose:
+                        print(f"[osm] success from {endpoint}")
+                    return responsePayload
             except HTTPError as error:
-                print("[osm] HTTPError", error.code, error.reason, endpoint)
+                print(f"[osm] HTTPError {error.code} {error.reason} {endpoint}")
                 try:
                     print("[osm] body head:", error.read().decode("utf-8")[:300])
                 except Exception:
                     pass
             except URLError as error:
-                print("[osm] URLError", error, endpoint)
+                print(f"[osm] URLError {error} {endpoint}")
             except TimeoutError as error:
-                print("[osm] TimeoutError", error, endpoint)
+                print(f"[osm] TimeoutError {error} {endpoint}")
             except OSError as error:
-                print("[osm] OSError", error, endpoint)
+                print(f"[osm] OSError {error} {endpoint}")
             except json.JSONDecodeError as error:
-                print("[osm] JSONDecodeError", error, endpoint)
-                print("[osm] body head:", body[:300] if "body" in locals() else "<no body>")
+                print(f"[osm] JSONDecodeError {error} {endpoint}")
+
+        return {}
+
+    def fetch(self) -> list[SourceRecord]:
+        query = self._buildQuery()
+        cacheFile = self._cacheKey(query)
+
+        # Try cache first
+        responsePayload = self._readCache(cacheFile)
+
+        # If cache miss or expired, fetch from endpoints
+        if not responsePayload:
+            responsePayload = self._fetchFromEndpoints(query)
+
+            # Cache the successful response for next time
+            if responsePayload and responsePayload.get("elements"):
+                self._writeCache(cacheFile, responsePayload)
 
         if not responsePayload:
+            if self.config.verbose:
+                print("[osm] all endpoints failed and no cache available")
             return []
 
         records: list[SourceRecord] = []

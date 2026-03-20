@@ -16,15 +16,17 @@ _UCI_LON = -117.8443
 
 # Weights for each scoring dimension (sum to ~1.0 for interpretability)
 _WEIGHTS = {
-    "onCampus": 0.15,
-    "vibe": 0.15,
-    "wifi": 0.12,
-    "parking": 0.12,
-    "outlets": 0.08,
-    "quiet": 0.08,
+    "onCampus": 0.13,
+    "vibe": 0.13,
+    "wifi": 0.10,
+    "parking": 0.10,
+    "outlets": 0.07,
+    "quiet": 0.07,
     "lateHours": 0.10,
     "distance": 0.10,
-    "bookmark": 0.10,
+    "bookmark": 0.08,
+    "timeOfDay": 0.07,
+    "searchHistory": 0.05,
 }
 
 
@@ -64,6 +66,25 @@ def _parseClosingHour(hoursText: str | None) -> int | None:
     return hour
 
 
+def _parseOpeningHour(hoursText: str | None) -> int | None:
+    """Extract the opening hour (0-23) from a hours string like 'Monday: 7:00 AM - 11:00 PM'."""
+    if not hoursText:
+        return None
+    match = re.search(
+        r"(\d{1,2})(?::\d{2})?\s*(AM|PM|am|pm)",
+        hoursText.strip(),
+    )
+    if not match:
+        return None
+    hour = int(match.group(1))
+    period = match.group(2).upper()
+    if period == "PM" and hour != 12:
+        hour += 12
+    elif period == "AM" and hour == 12:
+        hour = 0
+    return hour
+
+
 def _guessVibe(name: str, features: dict[str, Any]) -> str:
     """Infer a vibe category from the spot name and features."""
     lower = name.lower()
@@ -81,12 +102,113 @@ def _distanceMilesFromCampus(lat: float, lon: float) -> float:
     return meters / 1609.34
 
 
+def _scoreTimeOfDay(
+    timeOfDay: str | None,
+    closingHour: int | None,
+    openingHour: int | None,
+    onCampus: bool,
+) -> tuple[float, str | None]:
+    """Score a spot based on the current time-of-day context.
+
+    Returns a (fraction, explanation) tuple where fraction is 0.0-1.0 of the
+    timeOfDay weight to award.
+
+    Time-of-day categories:
+      morning  (before ~10am): boost spots that open early (opening <= 8)
+      afternoon (10am-5pm):    neutral, most spots are open
+      evening  (5pm-9pm):     boost spots open past 8pm
+      night    (after 9pm):   strongly boost spots open past 10pm
+    """
+    if timeOfDay is None:
+        return 0.5, None
+
+    timeOfDay = timeOfDay.lower().strip()
+
+    if timeOfDay == "morning":
+        if openingHour is not None and openingHour <= 8:
+            return 1.0, "opens early, good for morning (+)"
+        elif openingHour is not None and openingHour <= 10:
+            return 0.6, f"opens at {openingHour}:00"
+        elif onCampus:
+            return 0.5, "campus spot, morning hours uncertain"
+        else:
+            return 0.3, "opening time unknown for morning"
+
+    elif timeOfDay == "afternoon":
+        # Afternoon is the most common study time; most spots are open.
+        # Give a slight boost to spots we know are open.
+        if closingHour is not None and closingHour >= 17:
+            return 0.8, "open during afternoon (+)"
+        elif closingHour is not None:
+            return 0.4, f"may close at {closingHour}:00"
+        else:
+            return 0.5, None  # neutral, no explanation needed
+
+    elif timeOfDay == "evening":
+        if closingHour is not None and closingHour >= 21:
+            return 1.0, f"open until {closingHour}:00, great for evening (+)"
+        elif closingHour is not None and closingHour >= 19:
+            return 0.6, f"open until {closingHour}:00"
+        elif closingHour is not None:
+            return 0.2, f"closes at {closingHour}:00, may be closed in evening (-)"
+        elif onCampus:
+            return 0.6, "campus spot, evening hours uncertain"
+        else:
+            return 0.3, "hours unknown for evening"
+
+    elif timeOfDay == "night":
+        if closingHour is not None and closingHour >= 22:
+            return 1.0, f"open until {closingHour}:00, available late night (+)"
+        elif closingHour is not None and closingHour >= 20:
+            return 0.5, f"open until {closingHour}:00"
+        elif closingHour is not None:
+            return 0.1, f"closes at {closingHour}:00, likely closed at night (-)"
+        elif onCampus:
+            return 0.4, "campus spot, night hours uncertain"
+        else:
+            return 0.2, "hours unknown for night"
+
+    # treat as neutral
+    return 0.5, None
+
+
+def _scoreSearchHistory(
+    canonicalKey: str,
+    searchFrequencies: dict[str, int],
+    maxFrequency: int,
+) -> tuple[float, str | None]:
+    """Score a spot based on how often the user has searched for or viewed it.
+
+    Returns a (fraction, explanation) tuple where fraction is 0.0-1.0 of the
+    searchHistory weight to award. Frequency is normalized against the max
+    frequency across all spots for the user.
+    """
+    if not searchFrequencies or maxFrequency <= 0:
+        return 0.5, None  # neutral when no history exists
+
+    freq = searchFrequencies.get(canonicalKey, 0)
+    if freq == 0:
+        return 0.3, None  # slight penalty for never-visited spots (vs neutral)
+
+    # Normalize to 0.0-1.0 range
+    normalizedFreq = min(freq / maxFrequency, 1.0)
+    fraction = 0.5 + (normalizedFreq * 0.5)  # range: 0.5 to 1.0
+
+    if normalizedFreq >= 0.7:
+        return fraction, "frequently searched/viewed (+)"
+    elif normalizedFreq >= 0.3:
+        return fraction, "searched before (+)"
+    else:
+        return fraction, None  # minor boost, not worth mentioning
+
+
 def rankSpots(
     spots: list[dict[str, Any]],
     preferences: UserPreferences,
     context: RequestContext | None = None,
     bookmarkedKeys: set[str] | None = None,
     topK: int = 10,
+    searchFrequencies: dict[str, int] | None = None,
 ) -> list[ScoredSpot]:
     """Score and rank canonical spots against user preferences and context.
 
@@ -97,6 +219,10 @@ def rankSpots(
         context = RequestContext()
     if bookmarkedKeys is None:
         bookmarkedKeys = set()
+    if searchFrequencies is None:
+        searchFrequencies = {}
+
+    maxFrequency = max(searchFrequencies.values()) if searchFrequencies else 0
 
     scored: list[ScoredSpot] = []
 
@@ -229,6 +355,22 @@ def rankSpots(
         if canonicalKey in bookmarkedKeys:
             score += _WEIGHTS["bookmark"]
             explanation.append("bookmarked (+)")
+
+        openingHour = _parseOpeningHour(features.get("hoursText"))
+        todFraction, todExplanation = _scoreTimeOfDay(
+            context.timeOfDay, closingHour, openingHour, onCampus
+        )
+        score += _WEIGHTS["timeOfDay"] * todFraction
+        if todExplanation:
+            explanation.append(todExplanation)
+
+        # ── implicit search history signal ──
+        histFraction, histExplanation = _scoreSearchHistory(
+            canonicalKey, searchFrequencies, maxFrequency
+        )
+        score += _WEIGHTS["searchHistory"] * histFraction
+        if histExplanation:
+            explanation.append(histExplanation)
 
         # context: commute mode boost
         if context.commuteMode == "driving" and hasParking:

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:study_spot_locator/constants.dart';
 import 'package:study_spot_locator/models/study_spot.dart';
 import 'package:study_spot_locator/pages/details_page.dart';
+import 'package:study_spot_locator/services/api_service.dart';
 
 class LocationCard extends StatefulWidget {
   final StudySpot spot;
@@ -21,6 +22,27 @@ class _LocationCardState extends State<LocationCard> {
   void initState() {
     super.initState();
     _isBookmarked = widget.spot.isBookmarked;
+  }
+
+  void _toggleBookmark() async {
+    final newState = !_isBookmarked;
+    setState(() {
+      _isBookmarked = newState;
+      widget.spot.isBookmarked = newState;
+    });
+
+    final success = await ApiService.toggleBookmark(
+      "username",
+      widget.spot.canonicalKey,
+      newState,
+    );
+
+    if (!success && mounted) {
+      setState(() {
+        _isBookmarked = !newState;
+        widget.spot.isBookmarked = !newState;
+      });
+    }
   }
 
   @override
@@ -55,7 +77,7 @@ class _LocationCardState extends State<LocationCard> {
                       child: Image.asset(
                         widget.spot.imagePath,
                         height: 180,
-                        width: double.infinity,  // Set to a max of __ and min of __
+                        width: double.infinity,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
@@ -73,11 +95,7 @@ class _LocationCardState extends State<LocationCard> {
                       child: MouseRegion(
                         cursor: SystemMouseCursors.click,
                         child: GestureDetector(
-                          onTap:() {
-                            setState(() {
-                              _isBookmarked = !_isBookmarked;
-                            });
-                          },
+                          onTap: _toggleBookmark,
                           child: Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
@@ -89,7 +107,7 @@ class _LocationCardState extends State<LocationCard> {
                               children: [
                                 if (_isBookmarked)
                                   const Icon(
-                                    Icons.bookmark, 
+                                    Icons.bookmark,
                                     color: primaryGold,
                                     size: 24,
                                   ),
@@ -141,16 +159,16 @@ class _LocationCardState extends State<LocationCard> {
             ),
           ),
         )
-
       ],
     );
   }
+
   Widget _infoRow(IconData icon, String text) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 18, color: primaryBlack),
-        const SizedBox(width: 8,),
+        const SizedBox(width: 8),
         Flexible(
           child: Text(
             text,
@@ -161,4 +179,3 @@ class _LocationCardState extends State<LocationCard> {
     );
   }
 }
-

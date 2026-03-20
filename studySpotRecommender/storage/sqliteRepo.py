@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 from contextlib import closing
+from datetime import datetime, timezone
 from typing import Any
 
 from studySpotRecommender.dataModels import CanonicalStudySpot, SourceRecord
@@ -82,13 +83,30 @@ class SQLiteRepository:
                 )
                 """
             )
-
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
                     username TEXT PRIMARY KEY,
                     password TEXT NOT NULL
                 )
+                """
+            )
+            # Search history table for implicit signal tracking
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS searchHistory (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    canonicalKey TEXT NOT NULL,
+                    action TEXT NOT NULL DEFAULT 'view',
+                    timestamp TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_search_history_user
+                ON searchHistory(username, canonicalKey)
                 """
             )
             self._runMigrations(conn)
@@ -101,6 +119,32 @@ class SQLiteRepository:
             conn.execute("UPDATE canonicalSpots SET canonicalKey = canonicalId WHERE canonicalKey IS NULL")
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_canonical_spots_canonical_key ON canonicalSpots(canonicalKey)"
+            )
+
+        # Ensure searchHistory table exists for older databases
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if "searchHistory" not in tables:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS searchHistory (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    canonicalKey TEXT NOT NULL,
+                    action TEXT NOT NULL DEFAULT 'view',
+                    timestamp TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_search_history_user
+                ON searchHistory(username, canonicalKey)
+                """
             )
 
     # ── source records ──
@@ -205,8 +249,6 @@ class SQLiteRepository:
     # ── user preferences ──
 
     def saveUserPreferences(self, username: str, prefs: dict[str, Any]) -> None:
-        from datetime import datetime, timezone
-
         now = datetime.now(tz=timezone.utc).isoformat()
         with closing(sqlite3.connect(self.path)) as conn:
             conn.execute(
@@ -259,8 +301,6 @@ class SQLiteRepository:
     # ── bookmarks ──
 
     def addBookmark(self, username: str, canonicalKey: str) -> None:
-        from datetime import datetime, timezone
-
         now = datetime.now(tz=timezone.utc).isoformat()
         with closing(sqlite3.connect(self.path)) as conn:
             conn.execute(
@@ -283,3 +323,47 @@ class SQLiteRepository:
                 "SELECT canonicalKey FROM userBookmarks WHERE username = ?", (username,)
             ).fetchall()
             return {row[0] for row in rows}
+
+    def recordSearchInteraction(self, username: str, canonicalKey: str, action: str = "view") -> None:
+        """Record that a user searched for, viewed, or interacted with a spot.
+
+        Actions: 'search' (appeared in search results), 'view' (user clicked into details).
+        """
+        now = datetime.now(tz=timezone.utc).isoformat()
+        with closing(sqlite3.connect(self.path)) as conn:
+            conn.execute(
+                "INSERT INTO searchHistory (username, canonicalKey, action, timestamp) VALUES (?, ?, ?, ?)",
+                (username, canonicalKey, action, now),
+            )
+            conn.commit()
+
+    def recordSearchInteractionBatch(self, username: str, canonicalKeys: list[str], action: str = "search") -> None:
+        """Record that multiple spots appeared in search results for a user."""
+        now = datetime.now(tz=timezone.utc).isoformat()
+        with closing(sqlite3.connect(self.path)) as conn:
+            conn.executemany(
+                "INSERT INTO searchHistory (username, canonicalKey, action, timestamp) VALUES (?, ?, ?, ?)",
+                [(username, key, action, now) for key in canonicalKeys],
+            )
+            conn.commit()
+
+    def getSearchFrequencies(self, username: str) -> dict[str, int]:
+        """Return a mapping of canonicalKey -> interaction count for a user.
+
+        Counts all interactions (search appearances + detail views) to build
+        a frequency-based implicit signal. Views count double since they
+        indicate stronger interest.
+        """
+        with closing(sqlite3.connect(self.path)) as conn:
+            rows = conn.execute(
+                """
+                SELECT canonicalKey,
+                       SUM(CASE WHEN action = 'view' THEN 2 ELSE 1 END) as weightedCount
+                FROM searchHistory
+                WHERE username = ?
+                GROUP BY canonicalKey
+                ORDER BY weightedCount DESC
+                """,
+                (username,),
+            ).fetchall()
+            return {row[0]: row[1] for row in rows}

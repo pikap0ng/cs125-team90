@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from flask import Flask, jsonify, request
@@ -48,6 +49,21 @@ def _translateFlutterPrefs(body: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _inferTimeOfDay() -> str:
+    """Infer the time-of-day category from the current server time (UTC-7 for Pacific)."""
+    utcNow = datetime.now(tz=timezone.utc)
+    # Approximate Pacific time (UTC-7 for PDT, UTC-8 for PST)
+    pacificHour = (utcNow.hour - 7) % 24
+    if pacificHour < 10:
+        return "morning"
+    elif pacificHour < 17:
+        return "afternoon"
+    elif pacificHour < 21:
+        return "evening"
+    else:
+        return "night"
+
+
 def createApp(dbPath: str = "data/studySpots.db") -> Flask:
     app = Flask(__name__)
     if CORS is not None:
@@ -83,11 +99,34 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
         savedPrefs = repo.getUserPreferences(username) if username else None
         prefData = savedPrefs if savedPrefs else body.get("preferences", {})
         prefs = UserPreferences.fromDict(prefData)
-        context = RequestContext.fromDict(body.get("context", {}))
+
+        # Build context, auto-inferring timeOfDay if not provided
+        contextData = body.get("context", {})
+        if "timeOfDay" not in contextData or contextData["timeOfDay"] is None:
+            contextData["timeOfDay"] = _inferTimeOfDay()
+        context = RequestContext.fromDict(contextData)
+
         bookmarkedKeys = repo.getBookmarkedKeys(username) if username else set()
+        searchFrequencies = repo.getSearchFrequencies(username) if username else {}
         allSpots = repo.getAllCanonicalSpots()
         topK = body.get("topK", 10)
-        results = rankSpots(allSpots, prefs, context, bookmarkedKeys, topK=topK)
+        results = rankSpots(
+            allSpots,
+            prefs,
+            context,
+            bookmarkedKeys,
+            topK=topK,
+            searchFrequencies=searchFrequencies,
+        )
+
+        # Record search interactions for implicit signal tracking
+        if username and results:
+            resultKeys = [r.canonicalKey for r in results if r.canonicalKey]
+            try:
+                repo.recordSearchInteractionBatch(username, resultKeys, action="search")
+            except Exception:
+                pass  # non-critical, don't fail the request
+
         return jsonify({
             "username": username,
             "totalCandidates": len(allSpots),
@@ -120,6 +159,15 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
         for field in ("features", "featureProvenance", "confidence", "sourceIds"):
             if isinstance(spot.get(field), str):
                 spot[field] = json.loads(spot[field])
+
+        # Record a view interaction when a user looks at spot details
+        username = request.args.get("username", "").strip()
+        if username:
+            try:
+                repo.recordSearchInteraction(username, spotId, action="view")
+            except Exception:
+                pass
+
         return jsonify(spot)
 
     @app.route("/bookmarks", methods=["POST"])
@@ -166,5 +214,11 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
             return jsonify({"error": "username and spot_key are required"}), 400
         repo.removeBookmark(username, spotKey)
         return jsonify({"status": "removed", "username": username, "spot_key": spotKey})
+
+    @app.route("/search_history/<username>", methods=["GET"])
+    def searchHistory(username: str):
+        """Return the user's search frequency data for debugging/transparency."""
+        frequencies = repo.getSearchFrequencies(username)
+        return jsonify({"username": username, "frequencies": frequencies})
 
     return app

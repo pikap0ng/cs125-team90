@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:study_spot_locator/constants.dart';
 import 'package:study_spot_locator/models/study_spot.dart';
+import 'package:study_spot_locator/services/api_service.dart';
 
 class DetailsPage extends StatefulWidget{
   final StudySpot spot;
@@ -11,6 +12,35 @@ class DetailsPage extends StatefulWidget{
 }
 
 class _DetailsPageState extends State<DetailsPage> {
+  late bool _isBookmarked;
+
+  @override
+  void initState() {
+    super.initState();
+    _isBookmarked = widget.spot.isBookmarked;
+  }
+
+  void _toggleBookmark() async {
+    final newState = !_isBookmarked;
+    setState(() {
+      _isBookmarked = newState;
+      widget.spot.isBookmarked = newState;
+    });
+
+    final success = await ApiService.toggleBookmark(
+      "username",
+      widget.spot.canonicalKey,
+      newState,
+    );
+
+    if (!success && mounted) {
+      setState(() {
+        _isBookmarked = !newState;
+        widget.spot.isBookmarked = !newState;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -34,15 +64,11 @@ class _DetailsPageState extends State<DetailsPage> {
                   MouseRegion(
                     cursor: SystemMouseCursors.click,
                     child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          widget.spot.isBookmarked = !widget.spot.isBookmarked;
-                        });
-                      },
+                      onTap: _toggleBookmark,
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          if (widget.spot.isBookmarked)
+                          if (_isBookmarked)
                             const Icon(
                               Icons.bookmark,
                               color: primaryGold,
@@ -64,10 +90,8 @@ class _DetailsPageState extends State<DetailsPage> {
               const Divider(color: primaryBlack, thickness: 1.5),
               const SizedBox(height: 20,),
 
-              // Image carousel later
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                // Change width later
                 child: Image.asset(widget.spot.imagePath, height: 200, width: double.infinity, fit: BoxFit.contain,),
               ),
               const Center(
