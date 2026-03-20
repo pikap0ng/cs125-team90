@@ -65,11 +65,12 @@ class _DetailsPageState extends State<DetailsPage> {
               const SizedBox(height: 20,),
 
               // Image carousel later
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                // Change width later
-                child: Image.asset(widget.spot.imagePath, height: 200, width: double.infinity, fit: BoxFit.contain,),
-              ),
+              // ClipRRect(
+              //   borderRadius: BorderRadius.circular(4),
+              //   // Change width later
+              //   child: Image.asset(widget.spot.imagePath, height: 200, width: double.infinity, fit: BoxFit.contain,),
+              // ),
+              _buildSpotImage(),
               const Center(
                 child: Padding(
                   padding: EdgeInsets.all(8.0),
@@ -146,6 +147,42 @@ class _DetailsPageState extends State<DetailsPage> {
           Expanded(child: SelectableText(text)),
         ],
       ),
+    );
+  }
+
+  Widget _buildSpotImage() {
+    final String path = widget.spot.imagePath;
+
+    if (path.isEmpty) {
+      return _buildPlaceholder();
+    }
+
+    if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        height: 200,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+      );
+    }
+
+    return Image.asset(
+      path,
+      height: 200,
+      width: double.infinity,
+      fit: BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      height: 200,
+      width: double.infinity,
+      color: primaryGray,
+      alignment: Alignment.center,
+      child: const Icon(Icons.image_not_supported, color: primaryBlack, size: 40),
     );
   }
 }
