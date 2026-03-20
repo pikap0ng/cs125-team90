@@ -32,6 +32,14 @@ _KNOWN_UCI_STUDY_SPOTS: tuple[dict, ...] = (
         "name": "Grunigen Medical Library",
         "url": "https://www.lib.uci.edu/medical",
     },
+    {
+        "name": "UCI Student Center",
+        "url": "https://www.studentcenter.uci.edu/",
+    },
+    {
+        "name": "Anteater Learning Pavilion",
+        "url": "https://alp.uci.edu/",
+    },
 )
 
 # Shared values for all on-campus UCI library spots.
