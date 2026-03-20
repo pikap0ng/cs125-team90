@@ -7,10 +7,7 @@ from urllib.request import Request, urlopen
 from studySpotRecommender.dataModels import SourceRecord
 from .providerBase import BaseProvider
 
-
-# Curated list of physical UCI study locations.
 # Each entry produces exactly one SourceRecord.
-# Add new physical study spaces here as they open.
 _KNOWN_UCI_STUDY_SPOTS: tuple[dict, ...] = (
     {
         "name": "Langson Library",

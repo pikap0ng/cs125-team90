@@ -1,10 +1,14 @@
-
 from __future__ import annotations
 
 import json
 from typing import Any
 
 from flask import Flask, jsonify, request
+
+try:
+    from flask_cors import CORS
+except ImportError:
+    CORS = None
 
 from studySpotRecommender.ranker import rankSpots
 from studySpotRecommender.storage.sqliteRepo import SQLiteRepository
@@ -18,18 +22,15 @@ def _translateFlutterPrefs(body: dict[str, Any]) -> dict[str, Any]:
     amenities = body.get("amenities", {})
     locationType = body.get("location_type", {})
 
-    # amenities use 1=prefer, -1=avoid, 0=none
     onCampusVal = amenities.get("On Campus", 0)
     preferOnCampus = True if onCampusVal == 1 else (False if onCampusVal == -1 else None)
 
-    # Pick the preferred vibe from location_type (whichever is 1)
     preferredVibe = None
     for vibe, val in locationType.items():
         if val == 1:
             preferredVibe = vibe.lower()
             break
 
-    # Distance: -1 means not set
     maxDist = body.get("max_distance")
     if maxDist is not None and maxDist < 0:
         maxDist = None
@@ -49,6 +50,8 @@ def _translateFlutterPrefs(body: dict[str, Any]) -> dict[str, Any]:
 
 def createApp(dbPath: str = "data/studySpots.db") -> Flask:
     app = Flask(__name__)
+    if CORS is not None:
+        CORS(app)
     repo = SQLiteRepository(dbPath)
     repo.initialize()
 
@@ -62,7 +65,6 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
         username = body.get("username", "").strip()
         if not username:
             return jsonify({"error": "username is required"}), 400
-
         translated = _translateFlutterPrefs(body)
         repo.saveUserPreferences(username, translated)
         return jsonify({"status": "saved", "username": username})
@@ -74,28 +76,18 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
             return jsonify({"error": "no preferences found", "username": username}), 404
         return jsonify(prefs)
 
-
     @app.route("/recommendations", methods=["POST"])
     def recommendations():
         body = request.get_json(silent=True) or {}
         username = body.get("username", "").strip()
-
-        # Load saved preferences or use what was sent in the request
         savedPrefs = repo.getUserPreferences(username) if username else None
         prefData = savedPrefs if savedPrefs else body.get("preferences", {})
         prefs = UserPreferences.fromDict(prefData)
-
-        # Parse context
         context = RequestContext.fromDict(body.get("context", {}))
-
-        # Load bookmarks
         bookmarkedKeys = repo.getBookmarkedKeys(username) if username else set()
-
-        # Load all spots and rank
         allSpots = repo.getAllCanonicalSpots()
         topK = body.get("topK", 10)
         results = rankSpots(allSpots, prefs, context, bookmarkedKeys, topK=topK)
-
         return jsonify({
             "username": username,
             "totalCandidates": len(allSpots),
@@ -118,8 +110,6 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
             ],
         })
 
-
-
     @app.route("/spots/<spotId>", methods=["GET"])
     def spotDetails(spotId: str):
         spot = repo.getSpotById(spotId)
@@ -127,15 +117,10 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
             spot = repo.getSpotByKey(spotId)
         if spot is None:
             return jsonify({"error": "spot not found"}), 404
-
-        # Parse JSON string fields for the response
         for field in ("features", "featureProvenance", "confidence", "sourceIds"):
             if isinstance(spot.get(field), str):
                 spot[field] = json.loads(spot[field])
-
         return jsonify(spot)
-
-
 
     @app.route("/bookmarks", methods=["POST"])
     def addBookmark():
@@ -161,5 +146,25 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
     def listBookmarks(username: str):
         keys = repo.getBookmarkedKeys(username)
         return jsonify({"username": username, "bookmarks": sorted(keys)})
+
+    @app.route("/bookmarks/add", methods=["POST"])
+    def addBookmarkFlutter():
+        body = request.get_json(silent=True) or {}
+        username = body.get("username", "").strip()
+        spotKey = body.get("spot_key", "").strip() or body.get("canonicalKey", "").strip()
+        if not username or not spotKey:
+            return jsonify({"error": "username and spot_key are required"}), 400
+        repo.addBookmark(username, spotKey)
+        return jsonify({"status": "bookmarked", "username": username, "spot_key": spotKey})
+
+    @app.route("/bookmarks/remove", methods=["POST"])
+    def removeBookmarkFlutter():
+        body = request.get_json(silent=True) or {}
+        username = body.get("username", "").strip()
+        spotKey = body.get("spot_key", "").strip() or body.get("canonicalKey", "").strip()
+        if not username or not spotKey:
+            return jsonify({"error": "username and spot_key are required"}), 400
+        repo.removeBookmark(username, spotKey)
+        return jsonify({"status": "removed", "username": username, "spot_key": spotKey})
 
     return app
