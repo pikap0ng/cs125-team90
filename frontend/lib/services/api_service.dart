@@ -33,4 +33,43 @@ class ApiService {
       return false;
     }
   }
+
+  static Future<List<String>> getUserBookmarks(String username) async {
+    final url = Uri.parse('$baseUrl/bookmarks/$username');
+    
+    try {
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<String>.from(data['bookmarks']);
+      } else {
+        return [];
+      }
+    } catch (e) {
+      print("Error fetching bookmarks: $e");
+      return [];
+    }
+  }
+
+  static Future<bool> toggleBookmark(String username, String spotKey, bool isAdding) async {
+    final endpoint = isAdding ? '/bookmarks/add' : '/bookmarks/remove';
+    final url = Uri.parse('$baseUrl$endpoint');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "username": username,
+          "spot_key": spotKey,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Bookmark Toggle Error: $e");
+      return false;
+    }
+  }
+
 }
