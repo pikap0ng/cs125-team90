@@ -11,18 +11,50 @@ from studySpotRecommender.storage.sqliteRepo import SQLiteRepository
 from studySpotRecommender.userModel import RequestContext, UserPreferences
 
 
+def _translateFlutterPrefs(body: dict[str, Any]) -> dict[str, Any]:
+    if "preferOnCampus" in body or "needsWifi" in body or "preferredVibe" in body:
+        return body
+
+    amenities = body.get("amenities", {})
+    locationType = body.get("location_type", {})
+
+    # amenities use 1=prefer, -1=avoid, 0=none
+    onCampusVal = amenities.get("On Campus", 0)
+    preferOnCampus = True if onCampusVal == 1 else (False if onCampusVal == -1 else None)
+
+    # Pick the preferred vibe from location_type (whichever is 1)
+    preferredVibe = None
+    for vibe, val in locationType.items():
+        if val == 1:
+            preferredVibe = vibe.lower()
+            break
+
+    # Distance: -1 means not set
+    maxDist = body.get("max_distance")
+    if maxDist is not None and maxDist < 0:
+        maxDist = None
+
+    return {
+        "username": body.get("username", ""),
+        "preferOnCampus": preferOnCampus,
+        "preferredVibe": preferredVibe,
+        "needsWifi": False,
+        "needsParking": False,
+        "needsOutlets": amenities.get("Outlet Availability", 0) == 1,
+        "preferQuiet": body.get("noise_level", -1) > 0 and body.get("noise_level", 5) <= 2,
+        "maxDistanceMiles": maxDist,
+        "preferLateHours": False,
+    }
+
+
 def createApp(dbPath: str = "data/studySpots.db") -> Flask:
     app = Flask(__name__)
     repo = SQLiteRepository(dbPath)
     repo.initialize()
 
-    # ── health ──
-
     @app.route("/health", methods=["GET"])
     def health():
         return jsonify({"status": "ok"})
-
-    # ── preferences ──
 
     @app.route("/save_preferences", methods=["POST"])
     def savePreferences():
@@ -31,7 +63,8 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
         if not username:
             return jsonify({"error": "username is required"}), 400
 
-        repo.saveUserPreferences(username, body)
+        translated = _translateFlutterPrefs(body)
+        repo.saveUserPreferences(username, translated)
         return jsonify({"status": "saved", "username": username})
 
     @app.route("/preferences/<username>", methods=["GET"])
@@ -85,7 +118,7 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
             ],
         })
 
-    # ── spot details ──
+
 
     @app.route("/spots/<spotId>", methods=["GET"])
     def spotDetails(spotId: str):
