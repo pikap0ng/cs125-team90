@@ -6,10 +6,12 @@ import 'package:study_spot_locator/services/api_service.dart';
 
 class LocationCard extends StatefulWidget {
   final StudySpot spot;
+  final VoidCallback? onBookmarkChanged;
 
   const LocationCard({
     super.key,
     required this.spot,
+    this.onBookmarkChanged,
   });
 
   @override
@@ -22,6 +24,14 @@ class _LocationCardState extends State<LocationCard> {
   void initState() {
     super.initState();
     _isBookmarked = widget.spot.isBookmarked;
+  }
+
+  @override
+  void didUpdateWidget(covariant LocationCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.spot.isBookmarked != widget.spot.isBookmarked) {
+      _isBookmarked = widget.spot.isBookmarked;
+    }
   }
 
   void _toggleBookmark() async {
@@ -42,6 +52,8 @@ class _LocationCardState extends State<LocationCard> {
         _isBookmarked = !newState;
         widget.spot.isBookmarked = !newState;
       });
+    } else if (success) {
+      widget.onBookmarkChanged?.call();
     }
   }
 
@@ -56,11 +68,18 @@ class _LocationCardState extends State<LocationCard> {
         ),
         const SizedBox(height: 8),
         InkWell(
-          onTap: () {
-            Navigator.push(
+          onTap: () async {
+            await Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => DetailsPage(spot: widget.spot)),
             );
+            // Refresh bookmark state when returning from details
+            if (mounted) {
+              setState(() {
+                _isBookmarked = widget.spot.isBookmarked;
+              });
+              widget.onBookmarkChanged?.call();
+            }
           },
           child: Container(
             decoration: BoxDecoration(
@@ -138,6 +157,30 @@ class _LocationCardState extends State<LocationCard> {
                       const SizedBox(height: 8),
                       _infoRow(Icons.bar_chart, widget.spot.status),
                       const SizedBox(height: 8),
+                      // Show explanation snippets if available
+                      if (widget.spot.explanation.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: widget.spot.explanation
+                                .where((e) => e.contains("(+)"))
+                                .take(3)
+                                .map((e) => Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: darkPrimaryColor.withAlpha(25),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        e.replaceAll("(+)", "").trim(),
+                                        style: const TextStyle(fontSize: 11, color: darkPrimaryColor),
+                                      ),
+                                    ))
+                                .toList(),
+                          ),
+                        ),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [

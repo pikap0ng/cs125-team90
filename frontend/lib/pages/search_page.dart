@@ -41,7 +41,7 @@ class _SearchPageState extends State<SearchPage> {
 
     try {
       final results = await ApiService.getRecommendations(
-        username: "username", // TODO: use actual logged-in username from session
+        username: "username",
         query: query,
         topK: 20,
       );
@@ -143,7 +143,15 @@ class _SearchPageState extends State<SearchPage> {
                   children: _spots.map((spot) {
                     return ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 400),
-                      child: LocationCard(spot: spot),
+                      child: LocationCard(
+                        spot: spot,
+                        onBookmarkChanged: () {
+                          // Refresh to update bookmark states
+                          _loadRecommendations(
+                            query: _searchController.text.isEmpty ? null : _searchController.text,
+                          );
+                        },
+                      ),
                     );
                   }).toList(),
                 ),

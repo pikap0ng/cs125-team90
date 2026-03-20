@@ -25,9 +25,10 @@ class GooglePlacesProvider(BaseProvider):
         "places.accessibilityOptions"
     )
 
+    # Only include place types where studying is reasonable
     includedTypeGroups = (
         ["library", "book_store", "cafe", "coffee_shop"],
-        ["restaurant", "bakery", "community_center", "university"],
+        ["community_center", "university"],
     )
 
     def _searchNearby(self, includedTypes: list[str], maxResultCount: int) -> dict[str, object] | None:
@@ -70,6 +71,45 @@ class GooglePlacesProvider(BaseProvider):
                 print(f"[provider] google: invalid JSON response: {err}")
             return None
 
+    @staticmethod
+    def _isStudyAppropriate(place: dict) -> bool:
+        """Filter out places that are not suitable for studying (restaurants, bars, etc.)."""
+        placeTypes = place.get("types", [])
+        primaryType = place.get("primaryType", "")
+        name = place.get("displayName", {}).get("text", "").lower()
+
+        # Exclude if primary type is clearly a restaurant/food establishment
+        excludeTypes = {
+            "restaurant", "bar", "night_club", "meal_delivery",
+            "meal_takeaway", "food", "liquor_store", "fast_food_restaurant",
+            "steak_house", "seafood_restaurant", "pizza_restaurant",
+            "sushi_restaurant", "barbecue_restaurant", "mexican_restaurant",
+            "chinese_restaurant", "japanese_restaurant", "korean_restaurant",
+            "thai_restaurant", "vietnamese_restaurant", "italian_restaurant",
+            "american_restaurant", "indian_restaurant", "mediterranean_restaurant",
+            "hamburger_restaurant", "ramen_restaurant", "sandwich_shop",
+            "ice_cream_shop", "dessert_shop",
+        }
+        if primaryType in excludeTypes:
+            return False
+        if any(t in excludeTypes for t in placeTypes):
+            # Only exclude if none of the study-friendly types are present
+            studyTypes = {"library", "book_store", "cafe", "coffee_shop", "university", "community_center"}
+            if not any(t in studyTypes for t in placeTypes):
+                return False
+
+        # Exclude by name patterns that are clearly not study spots
+        excludeNamePatterns = [
+            "steakhouse", "grill", "bbq", "barbecue", "sushi", "ramen",
+            "pizza", "burger", "taco", "wings", "seafood", "buffet",
+            "brewery", "bar ", " bar", "pub ", " pub", "lounge",
+            "nightclub", "karaoke",
+        ]
+        if any(pattern in name for pattern in excludeNamePatterns):
+            return False
+
+        return True
+
     def fetch(self) -> list[SourceRecord]:
         if not self.config.googleApiKey:
             if self.config.verbose:
@@ -91,6 +131,13 @@ class GooglePlacesProvider(BaseProvider):
                 if not placeId or placeId in seenPlaceIds:
                     continue
                 seenPlaceIds.add(placeId)
+
+                # Filter out non-study-appropriate places
+                if not self._isStudyAppropriate(place):
+                    if self.config.verbose:
+                        placeName = place.get("displayName", {}).get("text", "Unknown")
+                        print(f"[provider] google: filtered out non-study spot: {placeName}")
+                    continue
 
                 parkingObj = place.get("parkingOptions", {})
                 parkingText = ", ".join([key for key, enabled in parkingObj.items() if enabled]) or None

@@ -37,11 +37,11 @@ class _PreferencesPageState extends State<PreferencesPage> {
     });
 
     bool success = await ApiService.saveUserPreferences(
-      username: "username",  // save username in session
+      username: "username",
       noise: _useNoisePref ? _noiseLevel : -1.0,
       distance: _useDistancePref ? _distance : -1.0,
       amenities: _preferences,
-      locationType: _locationTypePrefs
+      locationType: _locationTypePrefs,
     );
 
     if (!mounted) return;
@@ -52,11 +52,14 @@ class _PreferencesPageState extends State<PreferencesPage> {
 
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Preferences Saved!")),
+        const SnackBar(
+          content: Text("Preferences saved. Search results will now reflect your choices."),
+          duration: Duration(seconds: 3),
+        ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Failed to save."), backgroundColor: primaryRed,),
+        const SnackBar(content: Text("Failed to save."), backgroundColor: primaryRed),
       );
     }
   }
@@ -74,33 +77,61 @@ class _PreferencesPageState extends State<PreferencesPage> {
               children: [
                 ElevatedButton(
                   onPressed: () => Navigator.pushReplacementNamed(context, '/loginpage'),
-                  style: ElevatedButton.styleFrom(
-                    elevation: 0,
-                  ),
+                  style: ElevatedButton.styleFrom(elevation: 0),
                   child: const Text("Logout"),
                 ),
               ],
             ),
             const SelectableText("Preferences", style: primaryTitleStyle),
             const Divider(color: primaryBlack, thickness: 1.5),
-            const SelectableText("Your choices will affect suggestions and search results.", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),),
-            const SizedBox(height: 20,),
+            const SelectableText(
+              "Your choices affect how search results are ranked. "
+              "Preferred items boost matching spots to the top. "
+              "Avoided items push them down.",
+              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+            ),
+            const SizedBox(height: 6),
+            const SelectableText(
+              "Tap once = Prefer, Tap again = Avoid, Tap again = No preference",
+              style: TextStyle(fontSize: 11, color: darkPrimaryColor),
+            ),
+            const SizedBox(height: 20),
 
             _buildContainerSection([
               ..._preferences.keys.map((key) => _buildCheckOption(key)),
             ]),
             
-            const SizedBox(height: 20,),
+            const SizedBox(height: 20),
 
             _buildContainerSection([
-              _buildSliderWithToggle(label: "Noise Tolerance", value: _noiseLevel, isEnabled: _useNoisePref, min: 1, max: 5, divisions: 4, onToggle: (v) => setState(() => _useNoisePref = v!), onChanged: (v) => setState(() => _noiseLevel = v)),
-              const SizedBox(height: 5,),
-              _buildSliderWithToggle(label: "Distance From Campus", value: _distance, isEnabled: _useDistancePref, min: 0, max: 25, divisions: 25, onToggle: (v) => setState(() => _useDistancePref = v!), onChanged: (v) => setState(() => _distance = v)),
+              _buildSliderWithToggle(
+                label: "Noise Tolerance",
+                description: "Lower = prefer quieter spots",
+                value: _noiseLevel,
+                isEnabled: _useNoisePref,
+                min: 1, max: 5, divisions: 4,
+                onToggle: (v) => setState(() => _useNoisePref = v!),
+                onChanged: (v) => setState(() => _noiseLevel = v),
+              ),
+              const SizedBox(height: 5),
+              _buildSliderWithToggle(
+                label: "Max Distance From Campus",
+                description: "In miles. Spots beyond this are filtered out.",
+                value: _distance,
+                isEnabled: _useDistancePref,
+                min: 0, max: 25, divisions: 25,
+                onToggle: (v) => setState(() => _useDistancePref = v!),
+                onChanged: (v) => setState(() => _distance = v),
+              ),
             ]),
             
             const SizedBox(height: 20),
             _buildContainerSection([
               const Text("Location Type"),
+              const Text(
+                "Prefer library, cafe, or other vibes",
+                style: TextStyle(fontSize: 11, color: darkPrimaryColor),
+              ),
               Row(
                 children: [
                   Wrap(
@@ -111,7 +142,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
                 ],
               ),
             ]),
-            const SizedBox(height: 15,),
+            const SizedBox(height: 15),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -120,11 +151,20 @@ class _PreferencesPageState extends State<PreferencesPage> {
                     disabledBackgroundColor: darkPrimaryColor,
                   ),
                   onPressed: _isLoading ? null : _handleSave, 
-                  child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: primaryWhite, backgroundColor: Colors.transparent, strokeWidth: 2,),) : const Text("Save Changes"),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20, width: 20,
+                          child: CircularProgressIndicator(
+                            color: primaryWhite,
+                            backgroundColor: Colors.transparent,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text("Save Changes"),
                 ),
               ],
             ),
-            const SizedBox(height: 35,),
+            const SizedBox(height: 35),
           ],          
         ),
       ),
@@ -153,16 +193,20 @@ class _PreferencesPageState extends State<PreferencesPage> {
   Widget _buildCheckOption(String title) {
     Preference current = _preferences[title] ?? Preference.none;
     IconData icon;
+    String label;
 
     switch (current) {
       case Preference.prefer:
         icon = Icons.check_circle;
+        label = "PREFER";
         break;
       case Preference.avoid:
         icon = Icons.cancel_rounded;
+        label = "AVOID";
         break;
       case Preference.none:
         icon = Icons.circle_outlined;
+        label = "NONE";
         break;
     }
 
@@ -179,14 +223,14 @@ class _PreferencesPageState extends State<PreferencesPage> {
         });
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10,),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           children: [
             Icon(icon, color: darkPrimaryColor, size: 28),
-            const SizedBox(width: 15,),
+            const SizedBox(width: 15),
             Text(title, style: primaryTextStyle),
             const Spacer(),
-            Text(current.name.toUpperCase(), style: TextStyle(fontSize: 10, color: darkPrimaryColor.withAlpha(178))),
+            Text(label, style: TextStyle(fontSize: 10, color: darkPrimaryColor.withAlpha(178))),
           ],
         ),
       ),
@@ -195,6 +239,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
 
   Widget _buildSliderWithToggle({
     required String label,
+    String? description,
     required double value,
     required bool isEnabled,
     required double min,
@@ -209,10 +254,17 @@ class _PreferencesPageState extends State<PreferencesPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: primaryTextStyle,),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: primaryTextStyle),
+                if (description != null)
+                  Text(description, style: const TextStyle(fontSize: 11, color: darkPrimaryColor)),
+              ],
+            ),
             Row(
               children: [
-                const Text("N/A", style: TextStyle(fontSize: 12),),
+                const Text("N/A", style: TextStyle(fontSize: 12)),
                 Checkbox(value: !isEnabled, onChanged: (v) => onToggle(!v!)),
               ],
             ),
@@ -267,7 +319,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: darkPrimaryColor, size: 24),
-            const SizedBox(width: 4,),
+            const SizedBox(width: 4),
             Text(title, style: const TextStyle(fontSize: 13)),
           ],
         ),

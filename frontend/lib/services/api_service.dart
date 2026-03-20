@@ -57,6 +57,46 @@ class ApiService {
     }
   }
 
+  /// Fetch all bookmarked spots with full details for the bookmarks page.
+  /// Gets the bookmark keys, then fetches recommendations and filters to only bookmarked ones.
+  static Future<List<StudySpot>> getBookmarkedSpots(String username) async {
+    try {
+      final bookmarkKeys = await getUserBookmarks(username);
+      if (bookmarkKeys.isEmpty) return [];
+
+      final bookmarkSet = bookmarkKeys.toSet();
+
+      // Fetch all spots (with a high topK to get everything) and filter to bookmarked
+      final url = Uri.parse('$baseUrl/recommendations');
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "username": username,
+          "context": {},
+          "topK": 100,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final results = data['results'] as List<dynamic>? ?? [];
+
+        return results
+            .map((json) => StudySpot.fromBackend(
+                  json as Map<String, dynamic>,
+                  bookmarkedKeys: bookmarkSet,
+                ))
+            .where((spot) => bookmarkSet.contains(spot.canonicalKey))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching bookmarked spots: $e");
+      return [];
+    }
+  }
+
   static Future<bool> saveUserPreferences({
     required String username,
     required double noise,

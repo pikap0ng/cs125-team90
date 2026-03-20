@@ -13,17 +13,29 @@ class MainScreen extends StatefulWidget{
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
+
+  final GlobalKey<HomePageState> _homeKey = GlobalKey<HomePageState>();
   
-  final List<Widget> _pages = [
-    const HomePage(),
-    const SearchPage(),
-    const PreferencesPage(),
-  ];
+  late final List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = [
+      HomePage(key: _homeKey),
+      const SearchPage(),
+      const PreferencesPage(),
+    ];
+  }
 
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
+    // Refresh bookmarks whenever navigating to the bookmarks tab
+    if (index == 0) {
+      _homeKey.currentState?.refresh();
+    }
   }
 
   @override

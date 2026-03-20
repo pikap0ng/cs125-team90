@@ -17,24 +17,38 @@ from studySpotRecommender.userModel import RequestContext, UserPreferences
 
 
 def _translateFlutterPrefs(body: dict[str, Any]) -> dict[str, Any]:
+    """Translate the Flutter preferences format into the backend UserPreferences format."""
+    # If already in backend format, pass through
     if "preferOnCampus" in body or "needsWifi" in body or "preferredVibe" in body:
         return body
 
     amenities = body.get("amenities", {})
     locationType = body.get("location_type", {})
 
+    # On Campus: 1 = prefer, -1 = avoid, 0 = no preference
     onCampusVal = amenities.get("On Campus", 0)
     preferOnCampus = True if onCampusVal == 1 else (False if onCampusVal == -1 else None)
 
+    # Location type vibe: pick the first one with "prefer" (value == 1)
     preferredVibe = None
     for vibe, val in locationType.items():
         if val == 1:
             preferredVibe = vibe.lower()
             break
 
+    # Max distance: -1 means not set
     maxDist = body.get("max_distance")
     if maxDist is not None and maxDist < 0:
         maxDist = None
+
+    # Noise level: scale 1-5 where 1-2 = prefer quiet
+    noiseLevel = body.get("noise_level", -1)
+    preferQuiet = False
+    if noiseLevel > 0 and noiseLevel <= 2:
+        preferQuiet = True
+
+    # Outlet preference
+    needsOutlets = amenities.get("Outlet Availability", 0) == 1
 
     return {
         "username": body.get("username", ""),
@@ -42,8 +56,8 @@ def _translateFlutterPrefs(body: dict[str, Any]) -> dict[str, Any]:
         "preferredVibe": preferredVibe,
         "needsWifi": False,
         "needsParking": False,
-        "needsOutlets": amenities.get("Outlet Availability", 0) == 1,
-        "preferQuiet": body.get("noise_level", -1) > 0 and body.get("noise_level", 5) <= 2,
+        "needsOutlets": needsOutlets,
+        "preferQuiet": preferQuiet,
         "maxDistanceMiles": maxDist,
         "preferLateHours": False,
     }
@@ -52,7 +66,6 @@ def _translateFlutterPrefs(body: dict[str, Any]) -> dict[str, Any]:
 def _inferTimeOfDay() -> str:
     """Infer the time-of-day category from the current server time (UTC-7 for Pacific)."""
     utcNow = datetime.now(tz=timezone.utc)
-    # Approximate Pacific time (UTC-7 for PDT, UTC-8 for PST)
     pacificHour = (utcNow.hour - 7) % 24
     if pacificHour < 10:
         return "morning"
@@ -125,7 +138,7 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
             try:
                 repo.recordSearchInteractionBatch(username, resultKeys, action="search")
             except Exception:
-                pass  # non-critical, don't fail the request
+                pass
 
         return jsonify({
             "username": username,
@@ -160,7 +173,6 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
             if isinstance(spot.get(field), str):
                 spot[field] = json.loads(spot[field])
 
-        # Record a view interaction when a user looks at spot details
         username = request.args.get("username", "").strip()
         if username:
             try:
@@ -217,7 +229,6 @@ def createApp(dbPath: str = "data/studySpots.db") -> Flask:
 
     @app.route("/search_history/<username>", methods=["GET"])
     def searchHistory(username: str):
-        """Return the user's search frequency data for debugging/transparency."""
         frequencies = repo.getSearchFrequencies(username)
         return jsonify({"username": username, "frequencies": frequencies})
 
